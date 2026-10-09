@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-label="Four windows tiled in a dwindle layout, with HawkTile's workspace badges on the left of the taskbar and the workspace indicator in the middle of the screen">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#141a2a"/>
+      <stop offset="1" stop-color="#0b0d12"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <style>
+      .win { fill: #1a1e26; stroke: #2b313c; stroke-width: 1.5; }
+      .bar { fill: #222833; }
+      .line { fill: #2d3440; }
+      .accentLine { fill: #4c9aff; opacity: 0.55; }
+      .num { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 12px; text-anchor: middle; dominant-baseline: central; }
+      .osdnum { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 15px; text-anchor: middle; dominant-baseline: central; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="600" fill="url(#wall)"/>
+
+  <!-- Window 0: master, focused (accent border) -->
+  <g filter="url(#shadow)">
+    <rect class="win" x="16" y="16" width="636" height="520" rx="10" stroke="#4c9aff" stroke-width="2.5"/>
+    <path class="bar" d="M26 17 h616 a9 9 0 0 1 9 9 v22 h-634 v-22 a9 9 0 0 1 9 -9z"/>
+    <circle cx="612" cy="32" r="4" fill="#3a4250"/><circle cx="628" cy="32" r="4" fill="#3a4250"/><circle cx="596" cy="32" r="4" fill="#3a4250"/>
+    <rect class="line" x="40" y="76" width="220" height="10" rx="5"/>
+    <rect class="accentLine" x="40" y="100" width="120" height="10" rx="5"/>
+    <rect class="line" x="170" y="100" width="260" height="10" rx="5"/>
+    <rect class="line" x="64" y="124" width="300" height="10" rx="5"/>
+    <rect class="line" x="64" y="148" width="180" height="10" rx="5"/>
+    <rect class="accentLine" x="64" y="172" width="90" height="10" rx="5"/>
+    <rect class="line" x="164" y="172" width="210" height="10" rx="5"/>
+    <rect class="line" x="40" y="196" width="140" height="10" rx="5"/>
+    <rect class="line" x="40" y="236" width="340" height="10" rx="5"/>
+    <rect class="line" x="64" y="260" width="250" height="10" rx="5"/>
+    <rect class="line" x="64" y="284" width="310" height="10" rx="5"/>
+    <rect class="line" x="40" y="308" width="120" height="10" rx="5"/>
+  </g>
+
+  <!-- Window 1: top right -->
+  <g filter="url(#shadow)">
+    <rect class="win" x="664" y="16" width="520" height="254" rx="10"/>
+    <path class="bar" d="M674 17 h500 a9 9 0 0 1 9 9 v22 h-518 v-22 a9 9 0 0 1 9 -9z"/>
+    <rect class="line" x="688" y="72" width="140" height="10" rx="5"/>
+    <rect x="688" y="98" width="230" height="44" rx="10" fill="#26303f"/>
+    <rect x="938" y="150" width="220" height="44" rx="10" fill="#2a3a55"/>
+    <rect x="688" y="202" width="180" height="44" rx="10" fill="#26303f"/>
+  </g>
+
+  <!-- Window 2 and 3: bottom right, side by side -->
+  <g filter="url(#shadow)">
+    <rect class="win" x="664" y="282" width="254" height="254" rx="10"/>
+    <path class="bar" d="M674 283 h234 a9 9 0 0 1 9 9 v22 h-252 v-22 a9 9 0 0 1 9 -9z"/>
+    <rect x="688" y="336" width="206" height="120" rx="8" fill="#232a35"/>
+    <rect class="line" x="688" y="470" width="150" height="10" rx="5"/>
+    <rect class="line" x="688" y="494" width="100" height="10" rx="5"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect class="win" x="930" y="282" width="254" height="254" rx="10"/>
+    <path class="bar" d="M940 283 h234 a9 9 0 0 1 9 9 v22 h-252 v-22 a9 9 0 0 1 9 -9z"/>
+    <rect class="line" x="954" y="336" width="120" height="10" rx="5"/>
+    <rect class="line" x="954" y="360" width="190" height="10" rx="5"/>
+    <rect class="line" x="954" y="384" width="160" height="10" rx="5"/>
+    <rect class="line" x="954" y="408" width="70" height="10" rx="5"/>
+  </g>
+
+  <!-- Workspace indicator (center OSD) -->
+  <g filter="url(#shadow)">
+    <rect x="424" y="196" width="352" height="148" rx="12" fill="#202020" opacity="0.96"/>
+    <!-- badges: 1 active, 2 and 3 occupied (3 has a notification dot), rest empty -->
+    <circle cx="456" cy="227" r="15" fill="#4c9aff"/><text class="osdnum" x="456" y="227" fill="#0b0d12" font-weight="700">1</text>
+    <circle cx="492" cy="227" r="15" fill="#484848"/><text class="osdnum" x="492" y="227" fill="#fff" font-weight="700">2</text>
+    <circle cx="528" cy="227" r="15" fill="#484848"/><text class="osdnum" x="528" y="227" fill="#fff" font-weight="700">3</text>
+    <circle cx="538.6" cy="216.4" r="6.5" fill="#202020"/><circle cx="538.6" cy="216.4" r="5" fill="#4c9aff"/>
+    <g fill="#161616"><circle cx="564" cy="227" r="15"/><circle cx="600" cy="227" r="15"/><circle cx="636" cy="227" r="15"/><circle cx="672" cy="227" r="15"/><circle cx="708" cy="227" r="15"/><circle cx="744" cy="227" r="15"/></g>
+    <g fill="#828282"><text class="osdnum" x="564" y="227">4</text><text class="osdnum" x="600" y="227">5</text><text class="osdnum" x="636" y="227">6</text><text class="osdnum" x="672" y="227">7</text><text class="osdnum" x="708" y="227">8</text><text class="osdnum" x="744" y="227">9</text></g>
+    <!-- app icons, stacked under each occupied workspace -->
+    <rect x="448" y="252" width="16" height="16" rx="4" fill="#4c9aff"/>
+    <rect x="448" y="272" width="16" height="16" rx="4" fill="#e8a33d"/>
+    <rect x="448" y="292" width="16" height="16" rx="4" fill="#57c785"/>
+    <rect x="448" y="312" width="16" height="16" rx="4" fill="#c06cf0"/>
+    <rect x="484" y="252" width="16" height="16" rx="4" fill="#e05d5d"/>
+    <circle cx="500" cy="268" r="6.5" fill="#4c9aff"/><text class="num" x="500" y="268" fill="#0b0d12" font-size="8" font-weight="700">2</text>
+    <rect x="520" y="252" width="16" height="16" rx="4" fill="#3db8c9"/>
+  </g>
+
+  <!-- Taskbar -->
+  <rect x="0" y="552" width="1200" height="48" fill="#1b2130" opacity="0.92"/>
+  <rect x="0" y="552" width="1200" height="1" fill="#2c3446"/>
+  <!-- HawkTile badges on the left of the taskbar -->
+  <circle cx="30" cy="576" r="11" fill="#4c9aff"/><text class="num" x="30" y="576" fill="#0b0d12" font-weight="700">1</text>
+  <circle cx="56" cy="576" r="11" fill="#484848"/><text class="num" x="56" y="576" fill="#fff" font-weight="700">2</text>
+  <circle cx="82" cy="576" r="11" fill="#484848"/><text class="num" x="82" y="576" fill="#fff" font-weight="700">3</text>
+  <circle cx="89.8" cy="568.2" r="5.5" fill="#1b2130"/><circle cx="89.8" cy="568.2" r="4" fill="#4c9aff"/>
+  <g fill="#161616" opacity="0.8"><circle cx="108" cy="576" r="11"/><circle cx="134" cy="576" r="11"/><circle cx="160" cy="576" r="11"/><circle cx="186" cy="576" r="11"/><circle cx="212" cy="576" r="11"/><circle cx="238" cy="576" r="11"/></g>
+  <g fill="#7a7a7a"><text class="num" x="108" y="576">4</text><text class="num" x="134" y="576">5</text><text class="num" x="160" y="576">6</text><text class="num" x="186" y="576">7</text><text class="num" x="212" y="576">8</text><text class="num" x="238" y="576">9</text></g>
+  <!-- centered taskbar icons -->
+  <g>
+    <rect x="514" y="562" width="28" height="28" rx="6" fill="#3b82f6"/>
+    <rect x="550" y="562" width="28" height="28" rx="6" fill="#2a3242"/>
+    <rect x="586" y="562" width="28" height="28" rx="6" fill="#e8a33d"/>
+    <rect x="622" y="562" width="28" height="28" rx="6" fill="#57c785"/>
+    <rect x="658" y="562" width="28" height="28" rx="6" fill="#c06cf0"/>
+    <rect x="596" y="593" width="8" height="3" rx="1.5" fill="#9aa4b5"/>
+  </g>
+</svg>
