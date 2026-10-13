@@ -25,3 +25,8 @@
 | 23 | [rename command vocabulary](agents/23-rename-command-vocabulary.md) | Haiku 5.5 | 2026-10-09 12:05 UTC |
 | 24 | [logging fast path + sign-out](agents/24-logging-fast-path-sign-out.md) | Haiku 5.5 | 2026-10-09 12:18 UTC |
 | 25 | [read grouped settings paths](agents/25-read-grouped-settings-paths.md) | Haiku 5.5 | 2026-10-09 12:25 UTC |
+| 26 | [overview mode in the OSD](agents/26-overview-mode-in-the-osd.md) | Haiku 5.5 | 2026-10-13 07:58 UTC |
+| 27 | [hold-Alt detection + settings](agents/27-hold-alt-detection-settings.md) | Haiku 5.5 | 2026-10-13 07:58 UTC |
+
+Records 1–25 come from the first development session (up to 0.8.0), 26–27
+from the second (0.9.0, the hold-Alt workspace overview).

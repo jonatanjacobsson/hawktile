@@ -34,6 +34,15 @@ std::vector<HWINEVENTHOOK> s_hooks;
 HINSTANCE s_hinst = nullptr;
 UINT s_shellHookMsg = 0;  // "SHELLHOOK" registered message id
 
+// Hold-left-Alt overview (see the rules at the end of 10_contract.h).
+bool s_leftAltDown = false;  // left Alt is down, as seen by Raw Input
+bool s_holdArmed = false;    // kTimerHold is pending for this Alt press
+bool s_holdShown = false;    // this Alt press opened the overview
+
+// Raw Input keyboard: generic desktop page (0x01), keyboard usage (0x06).
+constexpr USHORT kRawUsagePage = 0x01;
+constexpr USHORT kRawUsageKeyboard = 0x06;
+
 struct EventRange {
     DWORD first;
     DWORD last;
@@ -263,6 +272,166 @@ void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject,
     }
 }
 
+// The keyboard registration used by both RegisterRawInputDevices calls.
+RAWINPUTDEVICE KeyboardDevice(DWORD flags, HWND target) {
+    RAWINPUTDEVICE device{};
+    device.usUsagePage = kRawUsagePage;
+    device.usUsage = kRawUsageKeyboard;
+    device.dwFlags = flags;
+    device.hwndTarget = target;
+    return device;
+}
+
+bool KeyDown(int vk) {
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+// The hold timer may run while the feature is on and tiling is not paused.
+bool HoldEnabled() {
+    return g.settings.holdOverview && !g.paused;
+}
+
+bool IsModifierVk(UINT vk) {
+    switch (vk) {
+        case VK_SHIFT:
+        case VK_LSHIFT:
+        case VK_RSHIFT:
+        case VK_CONTROL:
+        case VK_LCONTROL:
+        case VK_RCONTROL:
+        case VK_LWIN:
+        case VK_RWIN:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// True when some HawkTile binding uses Alt with this virtual key.
+bool IsAltBoundVk(UINT vk) {
+    for (const Binding& binding : g.settings.bindings) {
+        if ((binding.modifiers & MOD_ALT) && binding.vk == vk) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Setting the timer again restarts it, which is how a bound key re-arms it.
+void ArmHold() {
+    SetTimer(g.engineHwnd, kTimerHold, static_cast<UINT>(g.settings.holdDelayMs),
+             nullptr);
+    s_holdArmed = true;
+}
+
+void DisarmHold() {
+    if (s_holdArmed) {
+        KillTimer(g.engineHwnd, kTimerHold);
+        s_holdArmed = false;
+    }
+}
+
+// Cancels the pending hold, stops polling and closes an overview this press
+// opened, abandoning any press on it. Left Alt's own state is kept.
+void DropHold() {
+    DisarmHold();
+    KillTimer(g.engineHwnd, kTimerHoldPoll);
+    s_holdShown = false;
+    CloseWorkspaceOverview(true);
+}
+
+// kTimerHold: left Alt has been held for holdDelayMs. Opens the overview on the
+// focused monitor when Alt is still down and the feature is still enabled.
+void OpenHoldOverview() {
+    s_holdArmed = false;
+    const int mon = g.focusedMon;
+    if (!s_leftAltDown || !KeyDown(VK_LMENU) || !HoldEnabled() || mon < 0 ||
+        mon >= static_cast<int>(g.monitors.size())) {
+        return;
+    }
+    // Without this key, releasing Alt would open the menu bar.
+    SendMenuMaskKey();
+    ShowWorkspaceOverview(mon);
+    s_holdShown = WorkspaceOverviewOpen();
+    if (s_holdShown) {
+        SetTimer(g.engineHwnd, kTimerHoldPoll, 100, nullptr);
+    }
+}
+
+// kTimerHoldPoll: runs while the overview is open. Stops once it has closed. If
+// this Alt press opened it and Alt is no longer down (a key-up that Raw Input
+// never delivered), closes it. Keeps polling while a drag holds it open.
+void PollHoldOverview() {
+    if (!WorkspaceOverviewOpen()) {
+        KillTimer(g.engineHwnd, kTimerHoldPoll);
+        s_holdShown = false;
+        return;
+    }
+    if (s_holdShown && !KeyDown(VK_LMENU)) {
+        s_leftAltDown = false;
+        s_holdShown = false;
+        CloseWorkspaceOverview(false);
+    }
+}
+
+// Raw Input keyboard report. Implements the hold-left-Alt rules. Key codes and
+// characters are never logged.
+void OnRawKey(const RAWKEYBOARD& key) {
+    const UINT vk = key.VKey;
+    // Our own masking key, and the 0xFF filler some drivers report.
+    if (vk == kMenuMaskVk || vk == 0xFF) {
+        return;
+    }
+    const bool keyUp = (key.Flags & RI_KEY_BREAK) != 0;
+    // Right Alt (E0) is AltGr on many layouts, so it counts as any other key.
+    const bool leftAlt =
+        (vk == VK_MENU || vk == VK_LMENU) && (key.Flags & RI_KEY_E0) == 0;
+
+    if (leftAlt) {
+        if (keyUp) {
+            s_leftAltDown = false;
+            DisarmHold();
+            if (s_holdShown) {
+                s_holdShown = false;
+                CloseWorkspaceOverview(false);
+            }
+        } else if (!s_leftAltDown || (!s_holdArmed && !s_holdShown)) {
+            // A held key repeats; a repeat must not restart a pending hold.
+            // With nothing pending, this is a new press after a key-up that
+            // Raw Input never delivered (secure desktop), or Alt still held
+            // alone after a modifier that blocked arming was released.
+            s_leftAltDown = true;
+            if (HoldEnabled() && !KeyDown(VK_SHIFT) && !KeyDown(VK_CONTROL) &&
+                !KeyDown(VK_LWIN) && !KeyDown(VK_RWIN)) {
+                ArmHold();
+            }
+        }
+        return;
+    }
+
+    // Only key-downs of other keys matter.
+    if (keyUp) {
+        return;
+    }
+    const bool modifier = IsModifierVk(vk);
+    if (s_holdShown && WorkspaceOverviewOpen()) {
+        // Modifiers and HawkTile keys keep the overview open. Any other key,
+        // Escape included, abandons it.
+        if (!modifier && !IsAltBoundVk(vk)) {
+            s_holdShown = false;
+            CloseWorkspaceOverview(true);
+        }
+    } else if (s_leftAltDown) {
+        // A HawkTile key re-arms the hold, so Alt+2 followed by holding Alt still
+        // opens the overview. Any other key, modifiers included, disarms it.
+        if (!modifier && IsAltBoundVk(vk) && HoldEnabled()) {
+            ArmHold();
+        } else {
+            DisarmHold();
+        }
+    }
+}
+
 LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                                LPARAM lParam) {
     // The registered message id is not a compile-time constant, so no case label.
@@ -292,6 +461,21 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
             return 0;
         }
 
+        case WM_INPUT: {
+            // Keyboard input for the hold-Alt overview. This case deliberately
+            // leaves the switch: DefWindowProcW must still see WM_INPUT.
+            RAWINPUT input{};
+            UINT size = sizeof(RAWINPUT);
+            const UINT read = GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam),
+                                              RID_INPUT, &input, &size,
+                                              sizeof(RAWINPUTHEADER));
+            if (read != static_cast<UINT>(-1) &&
+                input.header.dwType == RIM_TYPEKEYBOARD) {
+                OnRawKey(input.data.keyboard);
+            }
+            break;
+        }
+
         case WM_TIMER:
             switch (wParam) {
                 case kTimerRetile:
@@ -317,9 +501,17 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                 case kTimerBar:
                     KillTimer(hwnd, kTimerBar);
                     UpdateTaskbarIndicators();
+                    RefreshWorkspaceOverview();
                     break;
                 case kTimerBarPoll:
                     UpdateTaskbarIndicators();
+                    break;
+                case kTimerHold:
+                    KillTimer(hwnd, kTimerHold);
+                    OpenHoldOverview();
+                    break;
+                case kTimerHoldPoll:
+                    PollHoldOverview();
                     break;
                 default:
                     break;
@@ -345,6 +537,9 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                    registered, static_cast<int>(g.settings.bindings.size()));
             ApplySettingsChange();
             UpdateTaskbarIndicators();
+            if (!g.settings.holdOverview) {
+                DropHold();
+            }
             return 0;
         }
 
@@ -371,6 +566,7 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                     ClearFocusBorder(g.borderedHwnd);
                     g.borderedHwnd = nullptr;
                 }
+                DropHold();
                 g.paused = true;
             }
             return 0;
@@ -434,12 +630,24 @@ void TeardownEngine(HWND hwnd) {
     s_hooks.clear();
 
     UnregisterBindings(hwnd, g.settings.bindings);
+    // Best effort: the window is destroyed below anyway.
+    const RAWINPUTDEVICE keyboard = KeyboardDevice(RIDEV_REMOVE, nullptr);
+    RegisterRawInputDevices(&keyboard, 1, sizeof(keyboard));
     KillTimer(hwnd, kTimerRetile);
     KillTimer(hwnd, kTimerPending);
     KillTimer(hwnd, kTimerDisplay);
     KillTimer(hwnd, kTimerSettle);
     KillTimer(hwnd, kTimerBar);
     KillTimer(hwnd, kTimerBarPoll);
+    KillTimer(hwnd, kTimerHold);
+    KillTimer(hwnd, kTimerHoldPoll);
+
+    // The hold state belongs to this engine run: the next start begins with Alt
+    // released, and an open overview closes before its window is destroyed.
+    s_leftAltDown = false;
+    s_holdArmed = false;
+    s_holdShown = false;
+    CloseWorkspaceOverview(true);
 
     // No window may stay hidden behind a dead engine.
     const std::vector<HWND> hidden(g.hiddenByUs.begin(), g.hiddenByUs.end());
@@ -500,6 +708,14 @@ DWORD WINAPI EngineThreadProc(LPVOID) {
     const int registered = RegisterBindings(hwnd, g.settings.bindings);
     HT_LOG(L"hotkeys registered: %d of %d", registered,
            static_cast<int>(g.settings.bindings.size()));
+
+    // Keyboard Raw Input for the hold-Alt overview. Without it the overview never
+    // opens, but hotkeys and tiling work as before.
+    const RAWINPUTDEVICE keyboard = KeyboardDevice(RIDEV_INPUTSINK, hwnd);
+    if (!RegisterRawInputDevices(&keyboard, 1, sizeof(keyboard))) {
+        HT_LOG(L"RegisterRawInputDevices failed (%lu), workspace overview disabled",
+               GetLastError());
+    }
 
     InstallHooks();
 

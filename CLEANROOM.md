@@ -27,7 +27,7 @@ checked against the records in [docs/provenance](docs/provenance/README.md).
 |---|---|---|
 | Owner | Jonatan Jacobsson | Requirements, live testing, decisions |
 | Planner | Claude Opus 5.5 | Architecture, the shared contract (`src/10_contract.h`), a precise brief per task, review and small integration fixes |
-| Implementers | Claude Haiku 5.5, 24 separate sessions | Each wrote or changed one or a few source fragments against the contract. Every brief told them not to look at, search for or reproduce code from other window managers |
+| Implementers | Claude Haiku 5.5, 26 separate sessions | Each wrote or changed one or a few source fragments against the contract. Every brief told them not to look at, search for or reproduce code from other window managers |
 | Researcher | Claude Opus 5.5, one session | Read other Windhawk mods to learn Windhawk engineering practices. Mods that manage window layout were read as **readme and settings only** |
 
 Every brief, follow-up and report is preserved verbatim in
@@ -77,7 +77,8 @@ reads the session transcripts and counts, for every participant, the web
 lookups, network commands, references to other window managers and reads of the
 restricted mods. [The results](docs/provenance/audit/results.md) show:
 
-- **Implementers (24 sessions):** zero in every column.
+- **Implementers (26 sessions, across two development sessions):** zero in
+  every column.
 - **Researcher:** GitHub API reads of Windhawk mods and wiki pages only; the
   window-arranging mods were read through the readme-only filter.
 - **Planner:** web lookups of the REA tool's landing page (not used), a

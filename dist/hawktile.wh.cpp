@@ -2,7 +2,7 @@
 // @id              hawktile
 // @name            HawkTile - Tiling Window Manager
 // @description     Window Tiling Manager. Stop dragging windows around. This tiles them for you, with per-monitor workspaces and Alt+ shortcuts.
-// @version         0.8.0
+// @version         0.9.0
 // @author          Jonatan Jacobsson
 // @github          https://github.com/jonatanjacobsson
 // @homepage        https://github.com/jonatanjacobsson/hawktile
@@ -29,6 +29,7 @@ or your apps.
   move it there. Resize with the normal window borders and the neighbours
   follow.
 - Workspace indicator on every taskbar, with notification dots.
+- Hold Alt to see every workspace and drag apps between them.
 - Float and ignore rules by process, window class or title.
 - Focus border in a color of your choice (Windows 11).
 
@@ -40,6 +41,7 @@ Hyprland bindings, with Alt in place of Super.
 |---|---|
 | Alt + Arrows | Focus the window in that direction |
 | Alt + Shift + Arrows | Swap with the window in that direction |
+| Hold left Alt | Workspace overview: drag app icons between workspaces |
 | Alt + 1..9 | Switch workspace |
 | Alt + Shift + 1..9 | Move window to workspace and follow it |
 | Alt + W | Close window |
@@ -79,6 +81,11 @@ Each monitor has its own workspaces. An indicator appears in the middle of the
 monitor for a moment when you switch or move a window: the active workspace is
 a filled circle in your accent color, workspaces with windows are bold, empty
 ones are dim, and under each workspace you see the icons of its apps.
+
+Hold the left Alt key for a moment and the same panel opens and stays while
+you hold it. Drag an app's icon onto another workspace to move that app's
+windows there, click a number to switch, or click an icon to go to the app.
+Let go of Alt to close it. The right Alt key (AltGr) never opens it.
 
 A compact version sits on the left side of every taskbar; click a number to
 switch. When an app on another workspace flashes in the taskbar (a new
@@ -157,6 +164,14 @@ the mod starts.
     $name: Popup duration (ms)
     #! $min: 100
     #! $max: 10000
+  - holdAlt: true
+    $name: Hold Alt for the workspace overview
+    $description: Hold the left Alt key to show the workspaces and their apps. Drag an app's icon onto another workspace to move its windows there, or click a number to switch
+  - holdDelay: 400
+    $name: Hold delay (ms)
+    $description: How long the left Alt key must be held before the overview opens
+    #! $min: 100
+    #! $max: 2000
   - notificationDots: true
     $name: Notification dots
     $description: Show a dot on a workspace when one of its apps flashes in the taskbar
@@ -354,6 +369,8 @@ inline constexpr UINT_PTR kTimerDisplay = 3;          // monitor topology change
 inline constexpr UINT_PTR kTimerSettle = 5;           // one-off retile after startup, 300 ms
 inline constexpr UINT_PTR kTimerBar = 6;              // coalesced taskbar-indicator refresh, 30 ms
 inline constexpr UINT_PTR kTimerBarPoll = 7;          // periodic taskbar-indicator check, 1000 ms
+inline constexpr UINT_PTR kTimerHold = 8;             // left Alt held long enough → overview, settings.holdDelayMs
+inline constexpr UINT_PTR kTimerHoldPoll = 9;         // overview open: is left Alt still down? 100 ms
 inline constexpr int kHotkeyIdBase = 0x100;           // hotkey id = base + binding index
 inline constexpr BYTE kMenuMaskVk = 0xE8;             // unassigned VK used to mask Alt/Win
 
@@ -517,6 +534,8 @@ struct Settings {
     bool tileMaximized = true;       // windows.tileMaximized
     bool workspaceOsd = true;        // indicators.popup
     int osdDurationMs = 2000;        // indicators.popupDuration; <= 0 → 2000, clamped 100..10000
+    bool holdOverview = true;        // indicators.holdAlt
+    int holdDelayMs = 400;           // indicators.holdDelay; <= 0 → 400, clamped 100..2000
     bool taskbarIndicator = true;    // indicators.taskbar
     bool attentionDots = true;       // indicators.notificationDots
     bool followActivation = true;    // windows.followActivation
@@ -897,7 +916,37 @@ inline constexpr wchar_t kOsdWindowClass[] = L"HawkTileOsd";
 // shell theme, accent palette, high contrast). Hides itself after settings.osdDurationMs;
 // calling again while visible redraws and restarts the timer. Created lazily
 // on the engine thread; sized for the monitor's DPI. No-op for bad `mon`.
+// While the overview (below) is open, it instead re-renders the overview for
+// `mon` in place: still interactive, no hide timer; a drag in progress is
+// cancelled first.
 void ShowWorkspaceOsd(int mon);
+
+// ---- Workspace overview (hold left Alt) --------------------------------------
+// The same panel, same look and same window as the popup, but INTERACTIVE:
+// no hide timer, it takes mouse input (never activated, never takes focus) and
+// it stays until CloseWorkspaceOverview. Mouse actions, left button only:
+//   - drag an app icon onto another workspace's column and release → every
+//     window of that icon's app group that is still on the source workspace of
+//     this monitor moves there with MoveWindowToWorkspace (the silent move);
+//   - click a badge → SwitchWorkspace(mon, column);
+//   - click an icon → ActivateWindowWorkspace(first still-managed window of
+//     the group) (switches to its workspace and focuses it).
+// After every action the panel is re-rendered for the same monitor.
+// Opening while the timed popup is visible converts it (its timer is killed).
+// No-op for bad `mon`.
+void ShowWorkspaceOverview(int mon);
+// Closes the overview. cancelDrag == false (left Alt released): hides now, or —
+// while a mouse button press or drag on the panel is in progress — right after
+// that press ends (the drop or click still happens). cancelDrag == true: any
+// press or drag is abandoned without effect and the panel hides now.
+// The window goes back to click-through. No-op when the overview is not open.
+void CloseWorkspaceOverview(bool cancelDrag);
+// True while the overview is open (including a press that outlives Alt).
+bool WorkspaceOverviewOpen();
+// Re-renders the open overview for its monitor so it shows current windows;
+// no-op when it is not open or while a press or drag is in progress. The
+// engine calls it from the coalesced kTimerBar refresh.
+void RefreshWorkspaceOverview();
 // Destroys the OSD window and unregisters its class (engine teardown).
 void DestroyOsd();
 
@@ -946,6 +995,26 @@ void NotifySettingsChanged();
 // clears the focus border, unregisters hotkeys, unhooks WinEvents and calls
 // DestroyOsd().
 void StopEngine();
+
+// Hold-left-Alt detection (60_engine.cpp) uses Raw Input (keyboard, with
+// RIDEV_INPUTSINK on the engine window), which observes keys without delaying
+// them, unlike a low-level keyboard hook. Right Alt is AltGr on many layouts
+// and never opens the overview. Rules, per left-Alt press:
+//   - Left Alt goes down (not a repeat) with Shift, Ctrl and Win all up, while
+//     settings.holdOverview && !g.paused → arm kTimerHold (holdDelayMs).
+//   - Before the overview opens: a HawkTile-bound key (the vk of any binding
+//     whose modifiers include MOD_ALT) re-arms the timer, so holding Alt after
+//     Alt+2 still opens it; any other key (modifiers included) disarms it.
+//   - kTimerHold fires with left Alt still down → SendMenuMaskKey() (no menu
+//     bar on release), ShowWorkspaceOverview(g.focusedMon), start kTimerHoldPoll.
+//   - While open: Shift/Ctrl/Win and bound keys keep it open (bound commands
+//     re-render it through ShowWorkspaceOsd); Escape or any other key →
+//     CloseWorkspaceOverview(true).
+//   - Left Alt released → CloseWorkspaceOverview(false).
+//   - kTimerHoldPoll: overview closed → stop polling; left Alt no longer down
+//     (GetAsyncKeyState; covers a key-up that Raw Input never delivered, e.g.
+//     the secure desktop) → CloseWorkspaceOverview(false).
+// kMenuMaskVk (our own injected key) and the 0xFF filler vk are ignored.
 
 }  // namespace ht
 
@@ -2124,6 +2193,9 @@ void ReadWindhawkSettings(Settings& s) {
     const int osdDuration = Wh_GetIntSetting(L"indicators.popupDuration");
     s.osdDurationMs =
         std::clamp(osdDuration <= 0 ? 2000 : osdDuration, 100, 10000);
+    s.holdOverview = Wh_GetIntSetting(L"indicators.holdAlt") != 0;
+    const int holdDelay = Wh_GetIntSetting(L"indicators.holdDelay");
+    s.holdDelayMs = std::clamp(holdDelay <= 0 ? 400 : holdDelay, 100, 2000);
     s.taskbarIndicator = Wh_GetIntSetting(L"indicators.taskbar") != 0;
     s.attentionDots = Wh_GetIntSetting(L"indicators.notificationDots") != 0;
     s.followActivation = Wh_GetIntSetting(L"windows.followActivation") != 0;
@@ -2347,7 +2419,8 @@ void LoadSettings(Settings& s) {
            L"%d float rules, %d ignore rules, %d bindings, "
            L"tileMaximized=%d, workspaceOsd=%d, indicatorDuration=%d ms, "
            L"taskbarIndicator=%d, taskbarIndicatorOffset=%d px, "
-           L"attentionDots=%d, followActivation=%d, debugLog=%d",
+           L"attentionDots=%d, followActivation=%d, holdOverview=%d, "
+           L"holdDelayMs=%d, debugLog=%d",
            s.outerGap, s.innerGap, s.workspaceCount, LayoutName(s.defaultLayout),
            static_cast<int>(s.floatRules.size()),
            static_cast<int>(s.ignoreRules.size()),
@@ -2355,7 +2428,8 @@ void LoadSettings(Settings& s) {
            static_cast<int>(s.tileMaximized), static_cast<int>(s.workspaceOsd),
            s.osdDurationMs, static_cast<int>(s.taskbarIndicator),
            s.taskbarIndicatorOffset, static_cast<int>(s.attentionDots),
-           static_cast<int>(s.followActivation), static_cast<int>(s.debugLog));
+           static_cast<int>(s.followActivation), static_cast<int>(s.holdOverview),
+           s.holdDelayMs, static_cast<int>(s.debugLog));
 }
 
 }  // namespace ht
@@ -3377,15 +3451,18 @@ void AdoptExistingWindows() {
 }  // namespace ht
 
 // =============================================================================
-// 55_osd.cpp — workspace indicator: a small topmost, click-through, never
-// activated panel with one column per workspace of a monitor. Each column has
-// a numbered badge; occupied workspaces also show one icon per app.
+// 55_osd.cpp — workspace indicator: a small topmost, never activated panel with
+// one column per workspace of a monitor. Each column has a numbered badge;
+// occupied workspaces also show one icon per app. As the popup it is
+// click-through; as the workspace overview (hold left Alt) the same panel takes
+// the mouse, see ShowWorkspaceOverview.
 // Engine thread only; all coordinates are physical pixels (per-monitor DPI v2).
 // =============================================================================
 
 #include <cmath>
 #include <shellscalingapi.h>
 #include <unordered_map>
+#include <windowsx.h>
 
 namespace ht {
 
@@ -3406,6 +3483,12 @@ constexpr int kOsdNumberDip = 15;        // badge number font height
 constexpr int kOsdDotDip = 10;           // notification dot diameter
 constexpr int kOsdDotRingDip = 3;        // ring: 2 * 1.5 dip wider than the dot
 constexpr double kOsdDotDiagonal = 0.7071;  // cos and sin of 45 degrees
+constexpr int kOsdDragIconDip = 20;         // app icon while it is dragged
+constexpr int kOsdHighlightCornerDip = 8;   // corner radius: drop target, icon hover
+constexpr int kOsdCellCornerDip = 4;        // corner radius: empty slot of a dragged icon
+constexpr int kOsdHoverGrowDip = 3;         // badge hover: the disc grows this far past the badge
+constexpr int kOsdBadgeItem = -1;           // hit test, hover, press: the column's badge
+constexpr int kOsdNoItem = -2;              // hit test, hover, press: no badge or icon there
 constexpr int kOsdMaxCount = 9;
 constexpr int kOsdDefaultDurationMs = 700;
 constexpr int kOsdAlpha = 235;
@@ -3422,10 +3505,12 @@ constexpr wchar_t kOsdPersonalizeKey[] =
 constexpr wchar_t kOsdAccentKey[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent";
 
-// One app on a workspace as shown: its icon and how many windows it has there.
+// One app on a workspace as shown: its icon, how many windows it has there, and
+// those windows (empty for the "+N" slot, which is never draggable).
 struct OsdIcon {
     HICON icon = nullptr;  // always set once resolved
     int count = 1;
+    std::vector<HWND> windows;
 };
 
 // One workspace column, laid out on show and painted as it is stored.
@@ -3456,6 +3541,22 @@ struct OsdState {
     int rows = 0;  // most icon rows in any column
     std::vector<OsdColumn> columns;
     Theme theme{};
+
+    // Overview (hold left Alt): takes mouse input and has no hide timer.
+    bool interactive = false;
+    int mon = -1;                  // monitor currently rendered
+    bool closeAfterPress = false;  // Alt was released during a press: close when it ends
+    // Press and drag. pressCol < 0 means no press; pressItem is kOsdBadgeItem or an icon index.
+    int pressCol = -1;
+    int pressItem = kOsdNoItem;
+    POINT pressPt{};
+    bool dragging = false;
+    POINT cursor{};    // last mouse position, client pixels
+    int dropCol = -1;  // column the dragged icon would land in; -1 = none
+    // Hover: the badge or icon under the mouse while nothing is pressed.
+    int hoverCol = -1;
+    int hoverItem = kOsdNoItem;
+    bool trackingLeave = false;  // TME_LEAVE is armed
 };
 
 OsdState osd;
@@ -3474,7 +3575,8 @@ unsigned osdShowStamp = 0;  // incremented once per show
 struct OsdGroup {
     HWND hwnd = nullptr;  // first window seen; represents the group
     std::wstring path;    // lowercase exe path; empty when unreadable
-    int count = 0;
+    int count = 0;        // == windows.size()
+    std::vector<HWND> windows;  // every window of the group, first-seen order
 };
 
 int OsdScale(int dip) {
@@ -3552,6 +3654,7 @@ std::vector<OsdGroup> OsdGroupWindows(const Workspace& ws) {
         const auto [it, inserted] = byKey.try_emplace(key, groups.size());
         if (inserted) groups.push_back(OsdGroup{hwnd, path, 0});
         ++groups[it->second].count;
+        groups[it->second].windows.push_back(hwnd);
     };
     for (HWND hwnd : ws.tiled) add(hwnd);
     for (HWND hwnd : ws.floating) add(hwnd);
@@ -3661,6 +3764,114 @@ void OsdPaintDot(HDC dc, const RECT& badgeCircle) {
     disc(dot, osd.theme.activeFill);
 }
 
+// Rounded rectangle with corner radius `radius` (GDI takes the ellipse size).
+void OsdRoundRect(HDC dc, const RECT& r, int radius) {
+    RoundRect(dc, r.left, r.top, r.right, r.bottom, radius * 2, radius * 2);
+}
+
+// Every pixel measure the panel is laid out with, for the current DPI. Painting
+// and hit testing both read it, so the two cannot disagree.
+struct OsdMetrics {
+    int pad = 0;       // outer padding
+    int gap = 0;       // between columns
+    int column = 0;    // column width
+    int badge = 0;     // badge circle diameter
+    int iconSize = 0;  // app icon size
+    int iconGap = 0;   // gap between icon rows
+    int iconTop = 0;   // top of the first icon row
+    int step = 0;      // iconSize + iconGap: distance between icon rows
+
+    int rowTop(int row) const { return iconTop + row * step; }
+    // Vertical band of an icon row: the icon plus half the gap on each side.
+    int bandTop(int row) const { return rowTop(row) - iconGap / 2; }
+    int bandBottom(int row) const {
+        return rowTop(row) + iconSize + iconGap - iconGap / 2;
+    }
+};
+
+OsdMetrics OsdCurrentMetrics() {
+    OsdMetrics m;
+    m.pad = OsdScale(kOsdPadDip);
+    m.gap = OsdScale(kOsdColGapDip);
+    m.column = OsdScale(kOsdColumnDip);
+    m.badge = OsdScale(kOsdBadgeDip);
+    m.iconSize = OsdScale(kOsdIconDip);
+    m.iconGap = OsdScale(kOsdIconGapDip);
+    m.iconTop = m.pad + m.badge + OsdScale(kOsdIconTopDip);
+    m.step = m.iconSize + m.iconGap;
+    return m;
+}
+
+// Mouse zone of column i along x, in client pixels [left, right). The zones tile
+// the client width: the first starts at 0 and the last ends at clientRight.
+void OsdZoneBounds(size_t i, int clientRight, const OsdMetrics& m, int& left,
+                   int& right) {
+    const OsdColumn& col = osd.columns[i];
+    left = i == 0 ? 0 : col.left - m.gap / 2;
+    right = i + 1 == osd.columns.size() ? clientRight
+                                        : col.left + col.width + (m.gap - m.gap / 2);
+}
+
+// What lies under a client point: the column zone (-1 outside the panel), and
+// in that column the badge, an icon index, or nothing.
+struct OsdHit {
+    int col = -1;
+    int item = kOsdNoItem;
+};
+
+OsdHit OsdHitTest(POINT pt) {
+    OsdHit hit;
+    RECT client{};
+    GetClientRect(osd.hwnd, &client);
+    if (!PtInRect(&client, pt)) return hit;
+
+    const OsdMetrics m = OsdCurrentMetrics();
+    for (size_t i = 0; i < osd.columns.size(); ++i) {
+        int left = 0;
+        int right = 0;
+        OsdZoneBounds(i, client.right, m, left, right);
+        if (pt.x < left || pt.x >= right) continue;
+
+        hit.col = static_cast<int>(i);
+        if (pt.y >= m.pad && pt.y < m.pad + m.badge) {
+            hit.item = kOsdBadgeItem;
+            break;
+        }
+        const int icons = static_cast<int>(osd.columns[i].icons.size());
+        for (int s = 0; s < icons; ++s) {
+            if (pt.y >= m.bandTop(s) && pt.y < m.bandBottom(s)) {
+                hit.item = s;
+                break;
+            }
+        }
+        break;
+    }
+    return hit;
+}
+
+bool OsdPressed() {
+    return osd.pressCol >= 0;
+}
+
+// Forgets the press and the drag. Nothing is repainted.
+void OsdClearPress() {
+    osd.pressCol = -1;
+    osd.pressItem = kOsdNoItem;
+    osd.dragging = false;
+    osd.dropCol = -1;
+}
+
+// Drops a press in progress with no effect and gives the capture back. The state
+// is cleared first, because ReleaseCapture sends WM_CAPTURECHANGED synchronously.
+void OsdAbandonPress() {
+    OsdClearPress();
+    if (osd.hwnd && GetCapture() == osd.hwnd) ReleaseCapture();
+}
+
+void OsdInvalidate() {
+    if (osd.hwnd) InvalidateRect(osd.hwnd, nullptr, FALSE);
+}
+
 // Draws into an off-screen bitmap and copies it once, so the layered window
 // never shows a half-drawn state.
 void OsdPaint(HWND hwnd, HDC target) {
@@ -3685,13 +3896,78 @@ void OsdPaint(HWND hwnd, HDC target) {
     FillRect(mem, &client, bg);
     DeleteObject(bg);
 
-    const int pad = OsdScale(kOsdPadDip);
-    const int badge = OsdScale(kOsdBadgeDip);
-    const int iconSize = OsdScale(kOsdIconDip);
-    const int iconGap = OsdScale(kOsdIconGapDip);
-    const int iconTop = pad + badge + OsdScale(kOsdIconTopDip);
-    const int step = iconSize + iconGap;
+    const OsdMetrics m = OsdCurrentMetrics();
     const HGDIOBJ smallFont = osd.smallFont ? osd.smallFont : defaultFont;
+    const int ncols = static_cast<int>(osd.columns.size());
+
+    // The icon being dragged, if any. Its slot is only an outline until it is dropped.
+    const OsdIcon* dragged = nullptr;
+    if (osd.dragging && osd.pressCol >= 0 && osd.pressCol < ncols) {
+        const std::vector<OsdIcon>& icons =
+            osd.columns[static_cast<size_t>(osd.pressCol)].icons;
+        if (osd.pressItem >= 0 && osd.pressItem < static_cast<int>(icons.size())) {
+            dragged = &icons[static_cast<size_t>(osd.pressItem)];
+        }
+    }
+
+    // Drop target: the whole zone of the column the dragged icon would land in.
+    if (dragged && osd.dropCol >= 0 && osd.dropCol < ncols) {
+        int left = 0;
+        int right = 0;
+        OsdZoneBounds(static_cast<size_t>(osd.dropCol), client.right, m, left, right);
+        const RECT drop{left + 1, m.pad / 2, right - 1, h - m.pad / 2};
+        const int corner = OsdScale(kOsdHighlightCornerDip);
+        if (osd.theme.highContrast) {
+            // No tint in high contrast: a 2-px frame instead.
+            HPEN frame = CreatePen(PS_SOLID, 2, osd.theme.activeFill);
+            HGDIOBJ oldFramePen = SelectObject(mem, frame);
+            HGDIOBJ oldBrush = SelectObject(mem, GetStockObject(NULL_BRUSH));
+            OsdRoundRect(mem, drop, corner);
+            SelectObject(mem, oldBrush);
+            SelectObject(mem, oldFramePen);
+            DeleteObject(frame);
+        } else {
+            HBRUSH tint =
+                CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.activeFill, 0.30));
+            HGDIOBJ oldBrush = SelectObject(mem, tint);
+            OsdRoundRect(mem, drop, corner);
+            SelectObject(mem, oldBrush);
+            DeleteObject(tint);
+        }
+    }
+
+    // Hover: a highlight behind the badge or icon under the mouse. Never while pressed.
+    if (osd.interactive && !OsdPressed() && osd.hoverCol >= 0 && osd.hoverCol < ncols) {
+        const OsdColumn& col = osd.columns[static_cast<size_t>(osd.hoverCol)];
+        // High contrast has no tint to blend (occupiedFill == background): an
+        // outline in the highlight color instead.
+        HBRUSH hover =
+            osd.theme.highContrast
+                ? nullptr
+                : CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.occupiedFill, 0.5));
+        HPEN hoverPen =
+            osd.theme.highContrast ? CreatePen(PS_SOLID, 1, osd.theme.activeFill) : nullptr;
+        HGDIOBJ oldBrush =
+            SelectObject(mem, hover ? static_cast<HGDIOBJ>(hover) : GetStockObject(NULL_BRUSH));
+        HGDIOBJ oldHoverPen = hoverPen ? SelectObject(mem, hoverPen) : nullptr;
+        if (osd.hoverItem == kOsdBadgeItem) {
+            // The badge circle grown a little: a disc behind it.
+            const int grow = OsdScale(kOsdHoverGrowDip);
+            const int badgeLeft = col.left + (col.width - m.badge) / 2;
+            const RECT disc{badgeLeft - grow, m.pad - grow, badgeLeft + m.badge + grow,
+                            m.pad + m.badge + grow};
+            OsdRoundRect(mem, disc, (disc.bottom - disc.top) / 2);
+        } else if (osd.hoverItem >= 0 && osd.hoverItem < static_cast<int>(col.icons.size())) {
+            // The icon's row band, as wide as the column.
+            const RECT band{col.left, m.bandTop(osd.hoverItem), col.left + col.width,
+                            m.bandBottom(osd.hoverItem)};
+            OsdRoundRect(mem, band, OsdScale(kOsdHighlightCornerDip));
+        }
+        if (oldHoverPen) SelectObject(mem, oldHoverPen);
+        SelectObject(mem, oldBrush);
+        if (hoverPen) DeleteObject(hoverPen);
+        if (hover) DeleteObject(hover);
+    }
 
     for (size_t i = 0; i < osd.columns.size(); ++i) {
         const OsdColumn& col = osd.columns[i];
@@ -3711,8 +3987,8 @@ void OsdPaint(HWND hwnd, HDC target) {
         }
 
         // Badge: circle centered in the column, top at the padding.
-        const int badgeLeft = col.left + (col.width - badge) / 2;
-        RECT circle{badgeLeft, pad, badgeLeft + badge, pad + badge};
+        const int badgeLeft = col.left + (col.width - m.badge) / 2;
+        RECT circle{badgeLeft, m.pad, badgeLeft + m.badge, m.pad + m.badge};
         HBRUSH brush = CreateSolidBrush(fill);
         HGDIOBJ oldBrush = SelectObject(mem, brush);
         Ellipse(mem, circle.left, circle.top, circle.right, circle.bottom);
@@ -3731,29 +4007,53 @@ void OsdPaint(HWND hwnd, HDC target) {
         // Icons: one per row, centered under the badge. Count badges are drawn
         // after all icons so that no icon covers another icon's badge. The row
         // after the icons holds "+N" when the workspace is crowded.
-        const int iconLeft = col.left + (col.width - iconSize) / 2;
+        const int iconLeft = col.left + (col.width - m.iconSize) / 2;
         const int stack = static_cast<int>(col.icons.size());
-        auto rowTop = [iconTop, step](int row) { return iconTop + row * step; };
+        // The dragged icon's own slot is skipped: it shows only as an outline.
+        const int source = (dragged && static_cast<int>(i) == osd.pressCol) ? osd.pressItem : -1;
         for (int s = 0; s < stack; ++s) {
-            DrawIconEx(mem, iconLeft, rowTop(s),
-                       col.icons[static_cast<size_t>(s)].icon, iconSize, iconSize,
+            if (s == source) continue;
+            DrawIconEx(mem, iconLeft, m.rowTop(s),
+                       col.icons[static_cast<size_t>(s)].icon, m.iconSize, m.iconSize,
                        0, nullptr, DI_NORMAL);
         }
         for (int s = 0; s < stack; ++s) {
             const OsdIcon& icon = col.icons[static_cast<size_t>(s)];
-            if (icon.count > 1) {
-                OsdPaintCountBadge(mem, iconLeft + iconSize, rowTop(s) + iconSize,
+            if (s != source && icon.count > 1) {
+                OsdPaintCountBadge(mem, iconLeft + m.iconSize, m.rowTop(s) + m.iconSize,
                                    icon.count, smallFont);
             }
         }
+        if (source >= 0 && source < stack) {
+            const int top = m.rowTop(source);
+            const RECT cell{iconLeft, top, iconLeft + m.iconSize, top + m.iconSize};
+            HPEN outline = CreatePen(PS_SOLID, 1, osd.theme.emptyText);
+            HGDIOBJ oldOutlinePen = SelectObject(mem, outline);
+            HGDIOBJ oldCellBrush = SelectObject(mem, GetStockObject(NULL_BRUSH));
+            OsdRoundRect(mem, cell, OsdScale(kOsdCellCornerDip));
+            SelectObject(mem, oldCellBrush);
+            SelectObject(mem, oldOutlinePen);
+            DeleteObject(outline);
+        }
         if (col.more > 0) {
-            const int top = rowTop(stack);
-            RECT cell{iconLeft, top, iconLeft + iconSize, top + iconSize};
+            const int top = m.rowTop(stack);
+            RECT cell{iconLeft, top, iconLeft + m.iconSize, top + m.iconSize};
             const std::wstring more = L"+" + std::to_wstring(col.more);
             SelectObject(mem, smallFont);
             SetTextColor(mem, osd.theme.listText);
             DrawTextW(mem, more.c_str(), static_cast<int>(more.size()), &cell,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        }
+    }
+
+    // The dragged icon, last, centered on the cursor.
+    if (dragged) {
+        const int size = OsdScale(kOsdDragIconDip);
+        const int left = osd.cursor.x - size / 2;
+        const int top = osd.cursor.y - size / 2;
+        DrawIconEx(mem, left, top, dragged->icon, size, size, 0, nullptr, DI_NORMAL);
+        if (dragged->count > 1) {
+            OsdPaintCountBadge(mem, left + size, top + size, dragged->count, smallFont);
         }
     }
 
@@ -3765,6 +4065,10 @@ void OsdPaint(HWND hwnd, HDC target) {
     DeleteObject(bmp);
     DeleteDC(mem);
 }
+
+// Renders the panel for monitor `mon` (defined below; the mouse handling
+// re-renders after each action).
+bool OsdRender(int mon);
 
 LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
@@ -3778,9 +4082,153 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_ERASEBKGND:
             return 1;  // OsdPaint covers the whole client area
         case WM_NCHITTEST:
-            return HTTRANSPARENT;
+            // Click-through as the popup; the overview takes the mouse.
+            return osd.interactive ? HTCLIENT : HTTRANSPARENT;
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
+        case WM_SETCURSOR:
+            if (osd.interactive && LOWORD(lp) == HTCLIENT) {
+                POINT pt{};
+                GetCursorPos(&pt);
+                ScreenToClient(hwnd, &pt);
+                const OsdHit hit = OsdHitTest(pt);
+                const bool onTarget = hit.col >= 0 && hit.item != kOsdNoItem;
+                SetCursor(LoadCursorW(nullptr, onTarget ? IDC_HAND : IDC_ARROW));
+                return TRUE;
+            }
+            break;
+        case WM_LBUTTONDOWN: {
+            if (!osd.interactive) return 0;
+            const POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            const OsdHit hit = OsdHitTest(pt);
+            if (hit.col < 0 || hit.item == kOsdNoItem) return 0;
+            osd.pressCol = hit.col;
+            osd.pressItem = hit.item;
+            osd.pressPt = pt;
+            osd.cursor = pt;
+            osd.dragging = false;
+            osd.dropCol = -1;
+            SetCapture(hwnd);
+            return 0;
+        }
+        case WM_MOUSEMOVE: {
+            if (!osd.interactive) return 0;
+            const POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            osd.cursor = pt;
+            if (OsdPressed()) {
+                // Only an icon drags, and only once the mouse has really moved.
+                if (!osd.dragging && osd.pressItem >= 0) {
+                    const int dx = pt.x - osd.pressPt.x;
+                    const int dy = pt.y - osd.pressPt.y;
+                    const int cx = GetSystemMetrics(SM_CXDRAG);
+                    const int cy = GetSystemMetrics(SM_CYDRAG);
+                    osd.dragging = dx > cx || dx < -cx || dy > cy || dy < -cy;
+                }
+                if (osd.dragging) {
+                    const OsdHit hit = OsdHitTest(pt);
+                    osd.dropCol = (hit.col >= 0 && hit.col != osd.pressCol) ? hit.col : -1;
+                    SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
+                    OsdInvalidate();
+                }
+                return 0;
+            }
+
+            // Not pressed: track the hover and ask for WM_MOUSELEAVE once.
+            if (!osd.trackingLeave) {
+                TRACKMOUSEEVENT tme{};
+                tme.cbSize = sizeof(tme);
+                tme.dwFlags = TME_LEAVE;
+                tme.hwndTrack = hwnd;
+                osd.trackingLeave = TrackMouseEvent(&tme) != FALSE;
+            }
+            const OsdHit hit = OsdHitTest(pt);
+            const bool onTarget = hit.col >= 0 && hit.item != kOsdNoItem;
+            const int hoverCol = onTarget ? hit.col : -1;
+            const int hoverItem = onTarget ? hit.item : kOsdNoItem;
+            if (hoverCol != osd.hoverCol || hoverItem != osd.hoverItem) {
+                osd.hoverCol = hoverCol;
+                osd.hoverItem = hoverItem;
+                OsdInvalidate();
+            }
+            return 0;
+        }
+        case WM_MOUSELEAVE:
+            osd.trackingLeave = false;
+            if (osd.hoverCol >= 0) {
+                osd.hoverCol = -1;
+                osd.hoverItem = kOsdNoItem;
+                OsdInvalidate();
+            }
+            return 0;
+        case WM_LBUTTONUP: {
+            if (!OsdPressed()) return 0;
+            // Take what the release needs and clear the press before ReleaseCapture,
+            // which sends WM_CAPTURECHANGED synchronously and must find no press.
+            const int mon = osd.mon;
+            const int pressCol = osd.pressCol;
+            const int pressItem = osd.pressItem;
+            const bool dragging = osd.dragging;
+            const int dropCol = osd.dropCol;
+            std::vector<HWND> windows;  // the pressed icon's windows
+            if (pressItem >= 0 && pressCol < static_cast<int>(osd.columns.size())) {
+                const std::vector<OsdIcon>& icons =
+                    osd.columns[static_cast<size_t>(pressCol)].icons;
+                if (pressItem < static_cast<int>(icons.size())) {
+                    windows = icons[static_cast<size_t>(pressItem)].windows;
+                }
+            }
+            OsdClearPress();
+            if (GetCapture() == hwnd) ReleaseCapture();
+
+            const POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            const OsdHit hit = OsdHitTest(pt);
+            if (dragging) {
+                if (dropCol >= 0) {
+                    int moved = 0;
+                    for (HWND window : windows) {
+                        WinLoc loc;
+                        if (Locate(window, &loc) && loc.mon == mon && loc.ws == pressCol) {
+                            MoveWindowToWorkspace(window, mon, dropCol);
+                            ++moved;
+                        }
+                    }
+                    HT_LOG(L"overview: moved %d window(s) from workspace %d to %d",
+                           moved, pressCol + 1, dropCol + 1);
+                }
+            } else if (hit.col == pressCol && hit.item == pressItem) {
+                if (pressItem == kOsdBadgeItem) {
+                    SwitchWorkspace(mon, pressCol);
+                } else {
+                    for (HWND window : windows) {
+                        WinLoc loc;
+                        if (Locate(window, &loc)) {
+                            ActivateWindowWorkspace(window);
+                            break;
+                        }
+                    }
+                }
+            }
+            // The actions above may have re-rendered the panel, so the flags are read now.
+            if (osd.closeAfterPress) {
+                CloseWorkspaceOverview(false);
+            } else if (WorkspaceOverviewOpen()) {
+                OsdRender(osd.mon);
+            }
+            return 0;
+        }
+        case WM_CAPTURECHANGED:
+            // Another window took the mouse during a press: the press is dropped, no effect.
+            if (OsdPressed()) {
+                OsdClearPress();
+                if (osd.closeAfterPress) {
+                    CloseWorkspaceOverview(true);
+                } else {
+                    osd.hoverCol = -1;
+                    osd.hoverItem = kOsdNoItem;
+                    OsdInvalidate();
+                }
+            }
+            return 0;
         case WM_TIMER:
             if (wp == kOsdHideTimer) {
                 KillTimer(hwnd, kOsdHideTimer);
@@ -3849,6 +4297,100 @@ bool OsdEnsureWindow() {
     DwmSetWindowAttribute(hwnd, kOsdCornerAttr, &corner, sizeof(corner));
 
     osd.hwnd = hwnd;
+    return true;
+}
+
+// Click-through while the popup shows, mouse-capable while the overview is open.
+// WS_EX_TRANSPARENT is what makes hit testing pass through, so it is removed for
+// the overview and put back afterwards.
+void OsdSetInteractive(bool on) {
+    if (!osd.hwnd || !IsWindow(osd.hwnd)) return;
+    const LONG_PTR ex = GetWindowLongPtrW(osd.hwnd, GWL_EXSTYLE);
+    const LONG_PTR transparent = static_cast<LONG_PTR>(WS_EX_TRANSPARENT);
+    const LONG_PTR next = on ? (ex & ~transparent) : (ex | transparent);
+    if (next == ex) return;
+    SetWindowLongPtrW(osd.hwnd, GWL_EXSTYLE, next);
+    SetWindowPos(osd.hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                     SWP_FRAMECHANGED);
+}
+
+// Builds the columns for monitor `mon` from its current workspaces and places the
+// panel centered on its work area. Does not touch the hide timer. Returns false
+// for a bad `mon` or when the window cannot be created.
+bool OsdRender(int mon) {
+    if (mon < 0 || mon >= static_cast<int>(g.monitors.size())) return false;
+    if (!OsdEnsureWindow()) return false;
+    osd.mon = mon;
+    osd.hoverCol = -1;
+    osd.hoverItem = kOsdNoItem;
+
+    const Monitor& m = g.monitors[mon];
+    const int avail = static_cast<int>(m.workspaces.size());
+    osd.count = std::clamp(avail, 1, kOsdMaxCount);
+    osd.active = std::clamp(m.active, 0, osd.count - 1);
+    osd.theme = ResolveTheme();
+
+    // DPI differs per monitor, so the scale is taken from the target monitor.
+    UINT dpiX = 96;
+    UINT dpiY = 96;
+    if (FAILED(GetDpiForMonitor(m.handle, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)) ||
+        dpiX == 0) {
+        dpiX = 96;
+    }
+    osd.dpi = static_cast<int>(dpiX);
+    OsdRebuildFonts();
+
+    // Icons used by this show carry its stamp, so trimming the exe-icon cache
+    // during the show never destroys one that is already in use.
+    ++osdShowStamp;
+
+    osd.columns.assign(static_cast<size_t>(osd.count), OsdColumn{});
+    osd.rows = 0;
+    for (int i = 0; i < osd.count && i < avail; ++i) {
+        const Workspace& ws = m.workspaces[i];
+        OsdColumn& col = osd.columns[static_cast<size_t>(i)];
+        col.occupied = !ws.tiled.empty() || !ws.floating.empty();
+        col.attention = i != osd.active && WorkspaceHasAttention(mon, i);
+        if (!col.occupied) continue;
+
+        const std::vector<OsdGroup> groups = OsdGroupWindows(ws);
+        const int groupCount = static_cast<int>(groups.size());
+        // Crowded: one icon fewer, and the last row shows "+N" for the rest.
+        const int icons = groupCount > kOsdMaxRows ? kOsdMaxRows - 1 : groupCount;
+        col.icons.reserve(static_cast<size_t>(icons));
+        for (int j = 0; j < icons; ++j) {
+            const OsdGroup& group = groups[static_cast<size_t>(j)];
+            col.icons.push_back(
+                OsdIcon{OsdIconFor(group.hwnd, group.path), group.count, group.windows});
+        }
+        if (groupCount > kOsdMaxRows) col.more = groupCount - icons;
+        osd.rows = std::max(osd.rows, col.slots());
+    }
+
+    // Every column, occupied or empty, is the badge column width. The panel is
+    // centered on the work area; 9 columns of this width always fit it.
+    const OsdMetrics geo = OsdCurrentMetrics();
+    int x = geo.pad;
+    for (OsdColumn& col : osd.columns) {
+        col.left = x;
+        col.width = geo.column;
+        x += geo.column + geo.gap;
+    }
+    const int width = x - geo.gap + geo.pad;
+    // Down to the last icon row, or only the badge row when there are no icons.
+    const int contentBottom =
+        osd.rows > 0 ? geo.rowTop(osd.rows - 1) + geo.iconSize : geo.pad + geo.badge;
+    const int height = contentBottom + geo.pad;
+    const int areaW = static_cast<int>(m.rcWork.right - m.rcWork.left);
+    const int areaH = static_cast<int>(m.rcWork.bottom - m.rcWork.top);
+
+    const int x0 = static_cast<int>(m.rcWork.left) + (areaW - width) / 2;
+    const int y0 = static_cast<int>(m.rcWork.top) + (areaH - height) / 2;
+    SetWindowPos(osd.hwnd, HWND_TOPMOST, x0, y0, width, height,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(osd.hwnd, nullptr, FALSE);
+    UpdateWindow(osd.hwnd);
     return true;
 }
 
@@ -3942,82 +4484,22 @@ Theme ResolveTheme() {
 }
 
 void ShowWorkspaceOsd(int mon) {
-    if (mon < 0 || mon >= static_cast<int>(g.monitors.size())) return;
-    if (!OsdEnsureWindow()) return;
-
-    const Monitor& m = g.monitors[mon];
-    const int avail = static_cast<int>(m.workspaces.size());
-    osd.count = std::clamp(avail, 1, kOsdMaxCount);
-    osd.active = std::clamp(m.active, 0, osd.count - 1);
-    osd.theme = ResolveTheme();
-
-    // DPI differs per monitor, so the scale is taken from the target monitor.
-    UINT dpiX = 96;
-    UINT dpiY = 96;
-    if (FAILED(GetDpiForMonitor(m.handle, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)) ||
-        dpiX == 0) {
-        dpiX = 96;
-    }
-    osd.dpi = static_cast<int>(dpiX);
-    OsdRebuildFonts();
-
-    // Icons used by this show carry its stamp, so trimming the exe-icon cache
-    // during the show never destroys one that is already in use.
-    ++osdShowStamp;
-
-    osd.columns.assign(static_cast<size_t>(osd.count), OsdColumn{});
-    osd.rows = 0;
-    for (int i = 0; i < osd.count && i < avail; ++i) {
-        const Workspace& ws = m.workspaces[i];
-        OsdColumn& col = osd.columns[static_cast<size_t>(i)];
-        col.occupied = !ws.tiled.empty() || !ws.floating.empty();
-        col.attention = i != osd.active && WorkspaceHasAttention(mon, i);
-        if (!col.occupied) continue;
-
-        const std::vector<OsdGroup> groups = OsdGroupWindows(ws);
-        const int groupCount = static_cast<int>(groups.size());
-        // Crowded: one icon fewer, and the last row shows "+N" for the rest.
-        const int icons = groupCount > kOsdMaxRows ? kOsdMaxRows - 1 : groupCount;
-        col.icons.reserve(static_cast<size_t>(icons));
-        for (int j = 0; j < icons; ++j) {
-            const OsdGroup& group = groups[static_cast<size_t>(j)];
-            col.icons.push_back(
-                OsdIcon{OsdIconFor(group.hwnd, group.path), group.count});
+    if (WorkspaceOverviewOpen()) {
+        // The overview is open: re-render it in place, with no hide timer. A press in
+        // progress is dropped first; if Alt was already released, the overview closes.
+        if (OsdPressed()) {
+            OsdAbandonPress();
+            if (osd.closeAfterPress) {
+                CloseWorkspaceOverview(true);
+                return;
+            }
         }
-        if (groupCount > kOsdMaxRows) col.more = groupCount - icons;
-        osd.rows = std::max(osd.rows, col.slots());
+        OsdRender(mon);
+        return;
     }
-
-    // Every column, occupied or empty, is the badge column width. The panel is
-    // centered on the work area; 9 columns of this width always fit it.
-    const int pad = OsdScale(kOsdPadDip);
-    const int gap = OsdScale(kOsdColGapDip);
-    const int colWidth = OsdScale(kOsdColumnDip);
-    const int badge = OsdScale(kOsdBadgeDip);
-    const int iconSize = OsdScale(kOsdIconDip);
-    const int iconGap = OsdScale(kOsdIconGapDip);
-
-    int x = pad;
-    for (OsdColumn& col : osd.columns) {
-        col.left = x;
-        col.width = colWidth;
-        x += colWidth + gap;
-    }
-    const int width = x - gap + pad;
-    const int height =
-        2 * pad + badge +
-        (osd.rows > 0 ? OsdScale(kOsdIconTopDip) + osd.rows * iconSize +
-                            (osd.rows - 1) * iconGap
-                      : 0);
-    const int areaW = static_cast<int>(m.rcWork.right - m.rcWork.left);
-    const int areaH = static_cast<int>(m.rcWork.bottom - m.rcWork.top);
-
-    const int x0 = static_cast<int>(m.rcWork.left) + (areaW - width) / 2;
-    const int y0 = static_cast<int>(m.rcWork.top) + (areaH - height) / 2;
-    SetWindowPos(osd.hwnd, HWND_TOPMOST, x0, y0, width, height,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    InvalidateRect(osd.hwnd, nullptr, FALSE);
-    UpdateWindow(osd.hwnd);
+    // A leftover interactive mode would make the timed popup block clicks.
+    if (osd.interactive) CloseWorkspaceOverview(true);
+    if (!OsdRender(mon)) return;
 
     // Calling again while visible resets the timer, so the overlay stays up
     // for a full duration after the latest keypress.
@@ -4026,7 +4508,53 @@ void ShowWorkspaceOsd(int mon) {
     SetTimer(osd.hwnd, kOsdHideTimer, static_cast<UINT>(ms), nullptr);
 }
 
+void ShowWorkspaceOverview(int mon) {
+    if (mon < 0 || mon >= static_cast<int>(g.monitors.size())) return;
+    if (!OsdEnsureWindow()) return;
+
+    const bool wasOpen = WorkspaceOverviewOpen();
+    OsdAbandonPress();  // a press left over from an earlier overview is dropped
+    KillTimer(osd.hwnd, kOsdHideTimer);
+    osd.interactive = true;
+    osd.closeAfterPress = false;
+    OsdSetInteractive(true);
+    OsdRender(mon);
+    if (!wasOpen) HT_LOG(L"overview opened on monitor %d", mon);
+}
+
+void CloseWorkspaceOverview(bool cancelDrag) {
+    // Keyed on the mode, not on visibility: an interactive panel that is hidden
+    // for any reason must still go back to click-through.
+    if (!osd.interactive) return;
+    if (OsdPressed() && !cancelDrag) {
+        // Hide once the press ends; the drop or click still happens.
+        osd.closeAfterPress = true;
+        return;
+    }
+
+    OsdAbandonPress();
+    osd.hoverCol = -1;
+    osd.hoverItem = kOsdNoItem;
+    osd.trackingLeave = false;
+    osd.interactive = false;
+    osd.closeAfterPress = false;
+    OsdSetInteractive(false);
+    if (osd.hwnd) {
+        KillTimer(osd.hwnd, kOsdHideTimer);
+        ShowWindow(osd.hwnd, SW_HIDE);
+    }
+}
+
+bool WorkspaceOverviewOpen() {
+    return osd.interactive && osd.hwnd != nullptr && IsWindowVisible(osd.hwnd) != FALSE;
+}
+
+void RefreshWorkspaceOverview() {
+    if (WorkspaceOverviewOpen() && !OsdPressed()) OsdRender(osd.mon);
+}
+
 void DestroyOsd() {
+    OsdAbandonPress();  // give the capture back before the window goes
     if (osd.hwnd && IsWindow(osd.hwnd)) {
         KillTimer(osd.hwnd, kOsdHideTimer);
         DestroyWindow(osd.hwnd);
@@ -4688,6 +5216,15 @@ std::vector<HWINEVENTHOOK> s_hooks;
 HINSTANCE s_hinst = nullptr;
 UINT s_shellHookMsg = 0;  // "SHELLHOOK" registered message id
 
+// Hold-left-Alt overview (see the rules at the end of 10_contract.h).
+bool s_leftAltDown = false;  // left Alt is down, as seen by Raw Input
+bool s_holdArmed = false;    // kTimerHold is pending for this Alt press
+bool s_holdShown = false;    // this Alt press opened the overview
+
+// Raw Input keyboard: generic desktop page (0x01), keyboard usage (0x06).
+constexpr USHORT kRawUsagePage = 0x01;
+constexpr USHORT kRawUsageKeyboard = 0x06;
+
 struct EventRange {
     DWORD first;
     DWORD last;
@@ -4917,6 +5454,166 @@ void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject,
     }
 }
 
+// The keyboard registration used by both RegisterRawInputDevices calls.
+RAWINPUTDEVICE KeyboardDevice(DWORD flags, HWND target) {
+    RAWINPUTDEVICE device{};
+    device.usUsagePage = kRawUsagePage;
+    device.usUsage = kRawUsageKeyboard;
+    device.dwFlags = flags;
+    device.hwndTarget = target;
+    return device;
+}
+
+bool KeyDown(int vk) {
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+// The hold timer may run while the feature is on and tiling is not paused.
+bool HoldEnabled() {
+    return g.settings.holdOverview && !g.paused;
+}
+
+bool IsModifierVk(UINT vk) {
+    switch (vk) {
+        case VK_SHIFT:
+        case VK_LSHIFT:
+        case VK_RSHIFT:
+        case VK_CONTROL:
+        case VK_LCONTROL:
+        case VK_RCONTROL:
+        case VK_LWIN:
+        case VK_RWIN:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// True when some HawkTile binding uses Alt with this virtual key.
+bool IsAltBoundVk(UINT vk) {
+    for (const Binding& binding : g.settings.bindings) {
+        if ((binding.modifiers & MOD_ALT) && binding.vk == vk) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Setting the timer again restarts it, which is how a bound key re-arms it.
+void ArmHold() {
+    SetTimer(g.engineHwnd, kTimerHold, static_cast<UINT>(g.settings.holdDelayMs),
+             nullptr);
+    s_holdArmed = true;
+}
+
+void DisarmHold() {
+    if (s_holdArmed) {
+        KillTimer(g.engineHwnd, kTimerHold);
+        s_holdArmed = false;
+    }
+}
+
+// Cancels the pending hold, stops polling and closes an overview this press
+// opened, abandoning any press on it. Left Alt's own state is kept.
+void DropHold() {
+    DisarmHold();
+    KillTimer(g.engineHwnd, kTimerHoldPoll);
+    s_holdShown = false;
+    CloseWorkspaceOverview(true);
+}
+
+// kTimerHold: left Alt has been held for holdDelayMs. Opens the overview on the
+// focused monitor when Alt is still down and the feature is still enabled.
+void OpenHoldOverview() {
+    s_holdArmed = false;
+    const int mon = g.focusedMon;
+    if (!s_leftAltDown || !KeyDown(VK_LMENU) || !HoldEnabled() || mon < 0 ||
+        mon >= static_cast<int>(g.monitors.size())) {
+        return;
+    }
+    // Without this key, releasing Alt would open the menu bar.
+    SendMenuMaskKey();
+    ShowWorkspaceOverview(mon);
+    s_holdShown = WorkspaceOverviewOpen();
+    if (s_holdShown) {
+        SetTimer(g.engineHwnd, kTimerHoldPoll, 100, nullptr);
+    }
+}
+
+// kTimerHoldPoll: runs while the overview is open. Stops once it has closed. If
+// this Alt press opened it and Alt is no longer down (a key-up that Raw Input
+// never delivered), closes it. Keeps polling while a drag holds it open.
+void PollHoldOverview() {
+    if (!WorkspaceOverviewOpen()) {
+        KillTimer(g.engineHwnd, kTimerHoldPoll);
+        s_holdShown = false;
+        return;
+    }
+    if (s_holdShown && !KeyDown(VK_LMENU)) {
+        s_leftAltDown = false;
+        s_holdShown = false;
+        CloseWorkspaceOverview(false);
+    }
+}
+
+// Raw Input keyboard report. Implements the hold-left-Alt rules. Key codes and
+// characters are never logged.
+void OnRawKey(const RAWKEYBOARD& key) {
+    const UINT vk = key.VKey;
+    // Our own masking key, and the 0xFF filler some drivers report.
+    if (vk == kMenuMaskVk || vk == 0xFF) {
+        return;
+    }
+    const bool keyUp = (key.Flags & RI_KEY_BREAK) != 0;
+    // Right Alt (E0) is AltGr on many layouts, so it counts as any other key.
+    const bool leftAlt =
+        (vk == VK_MENU || vk == VK_LMENU) && (key.Flags & RI_KEY_E0) == 0;
+
+    if (leftAlt) {
+        if (keyUp) {
+            s_leftAltDown = false;
+            DisarmHold();
+            if (s_holdShown) {
+                s_holdShown = false;
+                CloseWorkspaceOverview(false);
+            }
+        } else if (!s_leftAltDown || (!s_holdArmed && !s_holdShown)) {
+            // A held key repeats; a repeat must not restart a pending hold.
+            // With nothing pending, this is a new press after a key-up that
+            // Raw Input never delivered (secure desktop), or Alt still held
+            // alone after a modifier that blocked arming was released.
+            s_leftAltDown = true;
+            if (HoldEnabled() && !KeyDown(VK_SHIFT) && !KeyDown(VK_CONTROL) &&
+                !KeyDown(VK_LWIN) && !KeyDown(VK_RWIN)) {
+                ArmHold();
+            }
+        }
+        return;
+    }
+
+    // Only key-downs of other keys matter.
+    if (keyUp) {
+        return;
+    }
+    const bool modifier = IsModifierVk(vk);
+    if (s_holdShown && WorkspaceOverviewOpen()) {
+        // Modifiers and HawkTile keys keep the overview open. Any other key,
+        // Escape included, abandons it.
+        if (!modifier && !IsAltBoundVk(vk)) {
+            s_holdShown = false;
+            CloseWorkspaceOverview(true);
+        }
+    } else if (s_leftAltDown) {
+        // A HawkTile key re-arms the hold, so Alt+2 followed by holding Alt still
+        // opens the overview. Any other key, modifiers included, disarms it.
+        if (!modifier && IsAltBoundVk(vk) && HoldEnabled()) {
+            ArmHold();
+        } else {
+            DisarmHold();
+        }
+    }
+}
+
 LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                                LPARAM lParam) {
     // The registered message id is not a compile-time constant, so no case label.
@@ -4946,6 +5643,21 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
             return 0;
         }
 
+        case WM_INPUT: {
+            // Keyboard input for the hold-Alt overview. This case deliberately
+            // leaves the switch: DefWindowProcW must still see WM_INPUT.
+            RAWINPUT input{};
+            UINT size = sizeof(RAWINPUT);
+            const UINT read = GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam),
+                                              RID_INPUT, &input, &size,
+                                              sizeof(RAWINPUTHEADER));
+            if (read != static_cast<UINT>(-1) &&
+                input.header.dwType == RIM_TYPEKEYBOARD) {
+                OnRawKey(input.data.keyboard);
+            }
+            break;
+        }
+
         case WM_TIMER:
             switch (wParam) {
                 case kTimerRetile:
@@ -4971,9 +5683,17 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                 case kTimerBar:
                     KillTimer(hwnd, kTimerBar);
                     UpdateTaskbarIndicators();
+                    RefreshWorkspaceOverview();
                     break;
                 case kTimerBarPoll:
                     UpdateTaskbarIndicators();
+                    break;
+                case kTimerHold:
+                    KillTimer(hwnd, kTimerHold);
+                    OpenHoldOverview();
+                    break;
+                case kTimerHoldPoll:
+                    PollHoldOverview();
                     break;
                 default:
                     break;
@@ -4999,6 +5719,9 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                    registered, static_cast<int>(g.settings.bindings.size()));
             ApplySettingsChange();
             UpdateTaskbarIndicators();
+            if (!g.settings.holdOverview) {
+                DropHold();
+            }
             return 0;
         }
 
@@ -5025,6 +5748,7 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                     ClearFocusBorder(g.borderedHwnd);
                     g.borderedHwnd = nullptr;
                 }
+                DropHold();
                 g.paused = true;
             }
             return 0;
@@ -5088,12 +5812,24 @@ void TeardownEngine(HWND hwnd) {
     s_hooks.clear();
 
     UnregisterBindings(hwnd, g.settings.bindings);
+    // Best effort: the window is destroyed below anyway.
+    const RAWINPUTDEVICE keyboard = KeyboardDevice(RIDEV_REMOVE, nullptr);
+    RegisterRawInputDevices(&keyboard, 1, sizeof(keyboard));
     KillTimer(hwnd, kTimerRetile);
     KillTimer(hwnd, kTimerPending);
     KillTimer(hwnd, kTimerDisplay);
     KillTimer(hwnd, kTimerSettle);
     KillTimer(hwnd, kTimerBar);
     KillTimer(hwnd, kTimerBarPoll);
+    KillTimer(hwnd, kTimerHold);
+    KillTimer(hwnd, kTimerHoldPoll);
+
+    // The hold state belongs to this engine run: the next start begins with Alt
+    // released, and an open overview closes before its window is destroyed.
+    s_leftAltDown = false;
+    s_holdArmed = false;
+    s_holdShown = false;
+    CloseWorkspaceOverview(true);
 
     // No window may stay hidden behind a dead engine.
     const std::vector<HWND> hidden(g.hiddenByUs.begin(), g.hiddenByUs.end());
@@ -5154,6 +5890,14 @@ DWORD WINAPI EngineThreadProc(LPVOID) {
     const int registered = RegisterBindings(hwnd, g.settings.bindings);
     HT_LOG(L"hotkeys registered: %d of %d", registered,
            static_cast<int>(g.settings.bindings.size()));
+
+    // Keyboard Raw Input for the hold-Alt overview. Without it the overview never
+    // opens, but hotkeys and tiling work as before.
+    const RAWINPUTDEVICE keyboard = KeyboardDevice(RIDEV_INPUTSINK, hwnd);
+    if (!RegisterRawInputDevices(&keyboard, 1, sizeof(keyboard))) {
+        HT_LOG(L"RegisterRawInputDevices failed (%lu), workspace overview disabled",
+               GetLastError());
+    }
 
     InstallHooks();
 

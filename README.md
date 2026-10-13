@@ -25,7 +25,8 @@ workspaces, and your hands stay on the keyboard.
   and *monocle*.
 - **Workspaces per monitor.** Up to nine on each screen, switched
   independently. A small indicator on every taskbar shows where you are; click
-  a number to jump there.
+  a number to jump there. Hold **Alt** to see every workspace with its apps,
+  and drag an app onto another workspace to move it there.
 - **It notices things for you.** When an app on another workspace flashes for
   attention, its workspace gets a little dot. Click a Windows notification and
   HawkTile takes you to the right workspace and opens the app.
@@ -57,6 +58,7 @@ and compile again. Your settings are kept.
 |---|---|
 | **Alt + ← ↑ → ↓** | Focus the window in that direction (crosses monitors) |
 | **Alt + Shift + ← ↑ → ↓** | Swap with the window in that direction |
+| **Hold left Alt** | Workspace overview: drag an app's icon onto another workspace to move its windows there, click a number to switch, click an icon to go to the app |
 | **Alt + 1 … 9** | Switch workspace |
 | **Alt + Shift + 1 … 9** | Move the window to that workspace and go with it |
 | **Alt + W** | Close the window |
@@ -83,7 +85,7 @@ collapsible sections:
 | Section | Settings (defaults) |
 |---|---|
 | **Layout and gaps** | default layout (dwindle) · workspaces per monitor (9) · outer and inner gap (8 px) · master size (55 %) · resize step (5 %) |
-| **Workspace indicators** | badges on the taskbar (on) and their offset (12 px) · workspace popup (on) and its duration (2000 ms) · notification dots (on) |
+| **Workspace indicators** | badges on the taskbar (on) and their offset (12 px) · workspace popup (on) and its duration (2000 ms) · hold Alt for the overview (on) and the hold delay (400 ms) · notification dots (on) |
 | **Window handling** | tile maximized windows · float non-resizable and always-on-top windows · follow activated windows (all on) |
 | **Focus border** | on/off (on) · color (`4C9AFF`, Windows 11 only) |
 | **Rules** | float rules (dialogs, file-copy progress, Picture-in-Picture) · ignore rules (none). Write them as `process:app.exe`, `class:#32770` or `title:text` |

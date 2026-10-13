@@ -69,6 +69,8 @@ inline constexpr UINT_PTR kTimerDisplay = 3;          // monitor topology change
 inline constexpr UINT_PTR kTimerSettle = 5;           // one-off retile after startup, 300 ms
 inline constexpr UINT_PTR kTimerBar = 6;              // coalesced taskbar-indicator refresh, 30 ms
 inline constexpr UINT_PTR kTimerBarPoll = 7;          // periodic taskbar-indicator check, 1000 ms
+inline constexpr UINT_PTR kTimerHold = 8;             // left Alt held long enough → overview, settings.holdDelayMs
+inline constexpr UINT_PTR kTimerHoldPoll = 9;         // overview open: is left Alt still down? 100 ms
 inline constexpr int kHotkeyIdBase = 0x100;           // hotkey id = base + binding index
 inline constexpr BYTE kMenuMaskVk = 0xE8;             // unassigned VK used to mask Alt/Win
 
@@ -232,6 +234,8 @@ struct Settings {
     bool tileMaximized = true;       // windows.tileMaximized
     bool workspaceOsd = true;        // indicators.popup
     int osdDurationMs = 2000;        // indicators.popupDuration; <= 0 → 2000, clamped 100..10000
+    bool holdOverview = true;        // indicators.holdAlt
+    int holdDelayMs = 400;           // indicators.holdDelay; <= 0 → 400, clamped 100..2000
     bool taskbarIndicator = true;    // indicators.taskbar
     bool attentionDots = true;       // indicators.notificationDots
     bool followActivation = true;    // windows.followActivation
@@ -612,7 +616,37 @@ inline constexpr wchar_t kOsdWindowClass[] = L"HawkTileOsd";
 // shell theme, accent palette, high contrast). Hides itself after settings.osdDurationMs;
 // calling again while visible redraws and restarts the timer. Created lazily
 // on the engine thread; sized for the monitor's DPI. No-op for bad `mon`.
+// While the overview (below) is open, it instead re-renders the overview for
+// `mon` in place: still interactive, no hide timer; a drag in progress is
+// cancelled first.
 void ShowWorkspaceOsd(int mon);
+
+// ---- Workspace overview (hold left Alt) --------------------------------------
+// The same panel, same look and same window as the popup, but INTERACTIVE:
+// no hide timer, it takes mouse input (never activated, never takes focus) and
+// it stays until CloseWorkspaceOverview. Mouse actions, left button only:
+//   - drag an app icon onto another workspace's column and release → every
+//     window of that icon's app group that is still on the source workspace of
+//     this monitor moves there with MoveWindowToWorkspace (the silent move);
+//   - click a badge → SwitchWorkspace(mon, column);
+//   - click an icon → ActivateWindowWorkspace(first still-managed window of
+//     the group) (switches to its workspace and focuses it).
+// After every action the panel is re-rendered for the same monitor.
+// Opening while the timed popup is visible converts it (its timer is killed).
+// No-op for bad `mon`.
+void ShowWorkspaceOverview(int mon);
+// Closes the overview. cancelDrag == false (left Alt released): hides now, or —
+// while a mouse button press or drag on the panel is in progress — right after
+// that press ends (the drop or click still happens). cancelDrag == true: any
+// press or drag is abandoned without effect and the panel hides now.
+// The window goes back to click-through. No-op when the overview is not open.
+void CloseWorkspaceOverview(bool cancelDrag);
+// True while the overview is open (including a press that outlives Alt).
+bool WorkspaceOverviewOpen();
+// Re-renders the open overview for its monitor so it shows current windows;
+// no-op when it is not open or while a press or drag is in progress. The
+// engine calls it from the coalesced kTimerBar refresh.
+void RefreshWorkspaceOverview();
 // Destroys the OSD window and unregisters its class (engine teardown).
 void DestroyOsd();
 
@@ -661,5 +695,25 @@ void NotifySettingsChanged();
 // clears the focus border, unregisters hotkeys, unhooks WinEvents and calls
 // DestroyOsd().
 void StopEngine();
+
+// Hold-left-Alt detection (60_engine.cpp) uses Raw Input (keyboard, with
+// RIDEV_INPUTSINK on the engine window), which observes keys without delaying
+// them, unlike a low-level keyboard hook. Right Alt is AltGr on many layouts
+// and never opens the overview. Rules, per left-Alt press:
+//   - Left Alt goes down (not a repeat) with Shift, Ctrl and Win all up, while
+//     settings.holdOverview && !g.paused → arm kTimerHold (holdDelayMs).
+//   - Before the overview opens: a HawkTile-bound key (the vk of any binding
+//     whose modifiers include MOD_ALT) re-arms the timer, so holding Alt after
+//     Alt+2 still opens it; any other key (modifiers included) disarms it.
+//   - kTimerHold fires with left Alt still down → SendMenuMaskKey() (no menu
+//     bar on release), ShowWorkspaceOverview(g.focusedMon), start kTimerHoldPoll.
+//   - While open: Shift/Ctrl/Win and bound keys keep it open (bound commands
+//     re-render it through ShowWorkspaceOsd); Escape or any other key →
+//     CloseWorkspaceOverview(true).
+//   - Left Alt released → CloseWorkspaceOverview(false).
+//   - kTimerHoldPoll: overview closed → stop polling; left Alt no longer down
+//     (GetAsyncKeyState; covers a key-up that Raw Input never delivered, e.g.
+//     the secure desktop) → CloseWorkspaceOverview(false).
+// kMenuMaskVk (our own injected key) and the 0xFF filler vk are ignored.
 
 }  // namespace ht

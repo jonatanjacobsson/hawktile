@@ -355,6 +355,9 @@ void ReadWindhawkSettings(Settings& s) {
     const int osdDuration = Wh_GetIntSetting(L"indicators.popupDuration");
     s.osdDurationMs =
         std::clamp(osdDuration <= 0 ? 2000 : osdDuration, 100, 10000);
+    s.holdOverview = Wh_GetIntSetting(L"indicators.holdAlt") != 0;
+    const int holdDelay = Wh_GetIntSetting(L"indicators.holdDelay");
+    s.holdDelayMs = std::clamp(holdDelay <= 0 ? 400 : holdDelay, 100, 2000);
     s.taskbarIndicator = Wh_GetIntSetting(L"indicators.taskbar") != 0;
     s.attentionDots = Wh_GetIntSetting(L"indicators.notificationDots") != 0;
     s.followActivation = Wh_GetIntSetting(L"windows.followActivation") != 0;
@@ -578,7 +581,8 @@ void LoadSettings(Settings& s) {
            L"%d float rules, %d ignore rules, %d bindings, "
            L"tileMaximized=%d, workspaceOsd=%d, indicatorDuration=%d ms, "
            L"taskbarIndicator=%d, taskbarIndicatorOffset=%d px, "
-           L"attentionDots=%d, followActivation=%d, debugLog=%d",
+           L"attentionDots=%d, followActivation=%d, holdOverview=%d, "
+           L"holdDelayMs=%d, debugLog=%d",
            s.outerGap, s.innerGap, s.workspaceCount, LayoutName(s.defaultLayout),
            static_cast<int>(s.floatRules.size()),
            static_cast<int>(s.ignoreRules.size()),
@@ -586,7 +590,8 @@ void LoadSettings(Settings& s) {
            static_cast<int>(s.tileMaximized), static_cast<int>(s.workspaceOsd),
            s.osdDurationMs, static_cast<int>(s.taskbarIndicator),
            s.taskbarIndicatorOffset, static_cast<int>(s.attentionDots),
-           static_cast<int>(s.followActivation), static_cast<int>(s.debugLog));
+           static_cast<int>(s.followActivation), static_cast<int>(s.holdOverview),
+           s.holdDelayMs, static_cast<int>(s.debugLog));
 }
 
 }  // namespace ht

@@ -8,7 +8,8 @@ How HawkTile is put together, for people who want to read or change the code.
 windhawk.exe (tray / UI)                windhawk.exe -tool-mod "<mod id>"
   └─ mod loaded → launcher only ──spawn──►  └─ engine thread (per-monitor DPI aware v2)
                                               ├─ hidden top-level window: WM_HOTKEY, timers,
-                                              │  WM_DISPLAYCHANGE, settings reload, shell hook
+                                              │  WM_DISPLAYCHANGE, settings reload, shell hook,
+                                              │  WM_INPUT (Raw Input: hold left Alt → overview)
                                               ├─ WinEvent hooks (out of context, skip own process)
                                               ├─ model: monitors → workspaces → tiled / floating windows
                                               ├─ layout engine (pure functions, unit tested)
@@ -36,6 +37,10 @@ windhawk.exe (tray / UI)                windhawk.exe -tool-mod "<mod id>"
   gaps are even.
 - **Hung apps can't block the engine:** cross-process calls are asynchronous or
   use timeouts.
+- **Holding Alt is observed, never intercepted.** The overview watches the
+  keyboard through Raw Input (`RIDEV_INPUTSINK`) instead of a low-level
+  keyboard hook, so a busy engine can never delay anyone's typing. A 100 ms
+  poll of the left Alt key closes the overview if a key release was missed.
 
 ## Layout model
 
@@ -74,7 +79,7 @@ Fragments never include each other; everything shared is declared in
 | `src/30_win32.cpp` | window classification, placement, focus, border, hide/show, logging |
 | `src/40_config.cpp` | settings, key and command parsing, hotkey registration |
 | `src/50_model.cpp` | monitors, workspaces, retiling and every command |
-| `src/55_osd.cpp` | theme resolution and the center workspace indicator |
+| `src/55_osd.cpp` | theme resolution, the center workspace indicator and its interactive overview mode (hold left Alt; drag app icons between workspaces) |
 | `src/56_bar.cpp` | workspace badges on each taskbar |
 | `src/60_engine.cpp` | engine thread, window events, shell hook, lifecycle |
 | `src/90_toolmod.cpp` | Windhawk entry points and the tool-mod launcher |

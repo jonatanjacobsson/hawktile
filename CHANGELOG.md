@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0
+
+- Hold the left Alt key to open the workspace overview. It stays open while
+  you hold Alt: drag an app's icon onto another workspace to move that app's
+  windows there, click a number to switch, or click an icon to go to the app.
+  The right Alt key (AltGr) never opens it. New settings under Workspace
+  indicators: *Hold Alt for the workspace overview* (on) and *Hold delay*
+  (400 ms).
+
 ## 0.8.0 — first public release
 
 - Settings are grouped into sections: layout and gaps, workspace indicators,

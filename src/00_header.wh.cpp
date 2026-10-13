@@ -2,7 +2,7 @@
 // @id              hawktile
 // @name            HawkTile - Tiling Window Manager
 // @description     Window Tiling Manager. Stop dragging windows around. This tiles them for you, with per-monitor workspaces and Alt+ shortcuts.
-// @version         0.8.0
+// @version         0.9.0
 // @author          Jonatan Jacobsson
 // @github          https://github.com/jonatanjacobsson
 // @homepage        https://github.com/jonatanjacobsson/hawktile
@@ -29,6 +29,7 @@ or your apps.
   move it there. Resize with the normal window borders and the neighbours
   follow.
 - Workspace indicator on every taskbar, with notification dots.
+- Hold Alt to see every workspace and drag apps between them.
 - Float and ignore rules by process, window class or title.
 - Focus border in a color of your choice (Windows 11).
 
@@ -40,6 +41,7 @@ Hyprland bindings, with Alt in place of Super.
 |---|---|
 | Alt + Arrows | Focus the window in that direction |
 | Alt + Shift + Arrows | Swap with the window in that direction |
+| Hold left Alt | Workspace overview: drag app icons between workspaces |
 | Alt + 1..9 | Switch workspace |
 | Alt + Shift + 1..9 | Move window to workspace and follow it |
 | Alt + W | Close window |
@@ -79,6 +81,11 @@ Each monitor has its own workspaces. An indicator appears in the middle of the
 monitor for a moment when you switch or move a window: the active workspace is
 a filled circle in your accent color, workspaces with windows are bold, empty
 ones are dim, and under each workspace you see the icons of its apps.
+
+Hold the left Alt key for a moment and the same panel opens and stays while
+you hold it. Drag an app's icon onto another workspace to move that app's
+windows there, click a number to switch, or click an icon to go to the app.
+Let go of Alt to close it. The right Alt key (AltGr) never opens it.
 
 A compact version sits on the left side of every taskbar; click a number to
 switch. When an app on another workspace flashes in the taskbar (a new
@@ -157,6 +164,14 @@ the mod starts.
     $name: Popup duration (ms)
     #! $min: 100
     #! $max: 10000
+  - holdAlt: true
+    $name: Hold Alt for the workspace overview
+    $description: Hold the left Alt key to show the workspaces and their apps. Drag an app's icon onto another workspace to move its windows there, or click a number to switch
+  - holdDelay: 400
+    $name: Hold delay (ms)
+    $description: How long the left Alt key must be held before the overview opens
+    #! $min: 100
+    #! $max: 2000
   - notificationDots: true
     $name: Notification dots
     $description: Show a dot on a workspace when one of its apps flashes in the taskbar

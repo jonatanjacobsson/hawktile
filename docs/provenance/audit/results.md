@@ -67,3 +67,22 @@ the build and tests.
   for** those names in this project's own files or in the session transcripts
   (the audits that produced this file, and the scans that removed old names
   before the first release). None of them read material from those projects.
+## Second development session (0.9.0)
+
+Generated 2026-10-13 with the same script over the planner transcript and both
+subagent transcripts of the session that added the hold-Alt workspace overview.
+
+| Participant | Tool calls | Web tools | Network cmds | Other-WM access | Restricted-mod access | Web targets |
+|---|---|---|---|---|---|---|
+| planner (Opus 5.5) | 79 | 0 | 0 | 0 | 0 |  |
+| a94a07085d91365ec | 22 | 0 | 0 | 0 | 0 |  |
+| a7ad3143be3bc483b | 8 | 0 | 0 | 0 | 0 |  |
+
+**Implementers (2 Haiku sessions):** zero in every column.
+
+**Planner:** zero in every column. Earlier in the same session, before this
+feature, the planner published this repository to GitHub (`gh repo create`,
+`git push`) and checked it with `gh repo view`. Those commands only talked to
+this project's own repository, so the network pattern doesn't count them. To
+plan the feature, the planner read this project's sources and the compile
+logic of the locally installed Windhawk editor.
