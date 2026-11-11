@@ -2,7 +2,7 @@
 // @id              hawktile
 // @name            HawkTile - Tiling Window Manager
 // @description     Window Tiling Manager. Stop dragging windows around. This tiles them for you, with per-monitor workspaces and Alt+ shortcuts.
-// @version         0.9.0
+// @version         0.12.0
 // @author          Jonatan Jacobsson
 // @github          https://github.com/jonatanjacobsson
 // @homepage        https://github.com/jonatanjacobsson/hawktile
@@ -21,13 +21,14 @@ or your apps.
 
 ## Features
 - Layouts: **dwindle** (binary splits), **master** (master-stack),
-  **columns**, **rows**, **monocle**. Chosen per workspace.
+  **columns**, **rows**, **monocle**, **mainstage** (one window on a centre
+  stage, the others as small live tiles at the sides). Chosen per workspace.
 - Up to 9 workspaces per monitor, switched independently on each monitor.
 - Inner and outer gaps, adjustable split sizes.
 - Directional focus and swap, crossing to the neighbouring monitor at the edge.
 - Drag a tiled window onto another to swap them, or onto another monitor to
   move it there. Resize with the normal window borders and the neighbours
-  follow.
+  follow, or hold Alt + Shift and just move the mouse.
 - Workspace indicator on every taskbar, with notification dots.
 - Hold Alt to see every workspace and drag apps between them.
 - Float and ignore rules by process, window class or title.
@@ -41,15 +42,18 @@ Hyprland bindings, with Alt in place of Super.
 |---|---|
 | Alt + Arrows | Focus the window in that direction |
 | Alt + Shift + Arrows | Swap with the window in that direction |
-| Hold left Alt | Workspace overview: drag app icons between workspaces |
+| Hold left Alt | Workspace overview: point at a workspace and let go to jump there, or drag app icons between workspaces |
+| Hold left Alt + Shift, move the mouse | Resize the active window from the side the cursor is on |
 | Alt + 1..9 | Switch workspace |
 | Alt + Shift + 1..9 | Move window to workspace and follow it |
 | Alt + W | Close window |
 | Alt + F | Fullscreen (maximize) / restore |
 | Alt + T | Toggle floating / tiling |
+| Alt + Shift + T | Never tile this app again (press again to undo) |
 | Alt + J | Toggle split direction (dwindle) |
 | Alt + L | Next layout |
 | Alt + Equal / Minus | Grow the window to the left / right |
+| Alt + Period / Minus | The same pair on neighbouring keys. In mainstage: narrow / widen the stage |
 | Alt + Shift + Equal / Minus | Grow the window down / up |
 | Alt + M | Toggle monocle |
 | Alt + Shift + Enter | Swap with master |
@@ -68,9 +72,10 @@ Command names follow Hyprland's dispatchers. `<dir>` is left, right, up, down
 `workspace <1-9|next|prev>`, `movetoworkspace <n>` (you follow),
 `movetoworkspacesilent <n>` (you stay), `focusmonitor next`,
 `movetomonitor next`, `nextlayout`,
-`layout <dwindle|master|columns|rows|monocle>`, `togglefloating`,
+`layout <dwindle|master|columns|rows|monocle|mainstage>`, `togglefloating`,
 `togglemonocle`, `fullscreen`, `togglesplit`, `swapwithmaster`, `growmaster`,
-`shrinkmaster`, `rescan`, `toggletiling`, `closewindow`.
+`shrinkmaster`, `rescan`, `toggletiling`, `closewindow`,
+`togglealwaysfloat` (remember the focused window's app as never tiled; again to undo).
 
 Keys are written like `alt+shift+h`, `ctrl+alt+f1`, `win+alt+left`. Most
 `win+<key>` combinations are reserved by Explorer and will fail to register;
@@ -85,7 +90,8 @@ ones are dim, and under each workspace you see the icons of its apps.
 Hold the left Alt key for a moment and the same panel opens and stays while
 you hold it. Drag an app's icon onto another workspace to move that app's
 windows there, click a number to switch, or click an icon to go to the app.
-Let go of Alt to close it. The right Alt key (AltGr) never opens it.
+Let go of Alt to close it; if the mouse is over a workspace when you let go,
+you jump there. The right Alt key (AltGr) never opens it.
 
 A compact version sits on the left side of every taskbar; click a number to
 switch. When an app on another workspace flashes in the taskbar (a new
@@ -93,6 +99,34 @@ message, a call), a small dot appears on that workspace until you open the
 app. Clicking a Windows notification of an app on another workspace switches
 there and opens the app. Everything follows your Windows theme: light or dark
 mode, your accent color, and high contrast.
+
+## Mainstage
+Made for wide screens: the window you work in sits on a stage in the middle
+of the screen, and the workspace's other windows wait at the sides as small
+live pictures. Each side stacks up to three; with more, the first two stay
+large and the rest share the last place in a small grid.
+Drag a side tile onto the stage, or move focus to it with Alt + Arrows, and
+it swaps onto the stage; the window that was there takes its place at the
+side. A window you open or switch to (Alt + Tab, the taskbar) goes straight
+to the stage.
+
+Arrange the sides with the mouse: drag a tile onto another tile to swap them,
+or into free space on either side to move it to the end of that side. Drag
+the stage window by its title bar onto a tile to trade places with it, or
+into free space at a side to put it away there. Hold Alt while dragging a
+tile, or any window by its title bar, and drop it on a workspace of the
+overview to send it there.
+
+Clicks, right-clicks and the mouse wheel on a tile go into the window it
+shows, at the matching spot, without bringing it to the stage. This works
+with most apps, not all: the tile is a live picture of a window that stays
+stacked on the stage at full size, so typing still needs the stage, and
+dragging inside a tile moves the tile.
+
+Pick the layout with Alt + L, with `layout mainstage`, as the default layout,
+or for single workspaces under *Layout per workspace*. Alt + Minus widens the
+stage and Alt + Period narrows it; so do the stage window's border and the
+*Mainstage width* setting.
 
 ## Maximized windows
 Windows that are maximized when HawkTile picks them up are restored and tiled.
@@ -122,6 +156,16 @@ the mod starts.
     - columns: Columns
     - rows: Rows
     - monocle: Monocle
+    - mainstage: Mainstage (centre stage, live tiles at the sides)
+  - workspaceLayouts: [""]
+    $name: Layout per workspace
+    $description: Optional. The first entry is the layout of workspace 1, the second of workspace 2, and so on. Write dwindle, master, columns, rows, monocle or mainstage. Leave an entry empty (or write default) to use the default layout
+  - stageWidth: 50
+    $name: Mainstage width (%)
+    $description: Share of the screen width the stage takes in the mainstage layout. The rest is split between the two sides
+    #! $min: 20
+    #! $max: 90
+    #! $format: slider
   - workspaces: 9
     $name: Workspaces per monitor
     #! $min: 1
@@ -187,6 +231,9 @@ the mod starts.
   - followActivation: true
     $name: Follow activated windows
     $description: When a window on another workspace brings itself to the front (for example after you click its notification), switch to that workspace
+  - mouseResize: true
+    $name: Resize with Alt+Shift and the mouse
+    $description: Hold the left Alt key and Shift and move the mouse (no click) to resize the active window, tiled or floating, from the side the cursor is on. Other tiled windows make room when you let go
   $name: Window handling
 - border:
   - enabled: true
@@ -203,7 +250,7 @@ the mod starts.
     - class:OperationStatusWindow
     - title:Picture-in-Picture
     $name: Float rules
-    $description: Windows that float instead of tiling. process:<exe>, class:<class>, or title:<text in the title>
+    $description: Windows that float instead of tiling. process:<exe>, class:<class>, or title:<text in the title>. Apps you float with Alt+Shift+T are remembered separately; press it again on the app to undo
   - ignore: [""]
     $name: Ignore rules
     $description: Windows HawkTile never touches. Same syntax as the float rules
@@ -267,11 +314,15 @@ the mod starts.
     - command: fullscreen
   - - keys: alt+t
     - command: togglefloating
+  - - keys: alt+shift+t
+    - command: togglealwaysfloat
   - - keys: alt+j
     - command: togglesplit
   - - keys: alt+l
     - command: nextlayout
   - - keys: alt+equals
+    - command: resizeactive left
+  - - keys: alt+period
     - command: resizeactive left
   - - keys: alt+minus
     - command: resizeactive right

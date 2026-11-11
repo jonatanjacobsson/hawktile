@@ -38,7 +38,7 @@ $libs = @('-ldwmapi', '-lshell32', '-luser32', '-lshcore', '-lgdi32', '-ladvapi3
 $modFragments = @(
     '00_header.wh.cpp', '10_contract.h', '20_layout.cpp', '30_win32.cpp',
     '40_config.cpp', '50_model.cpp', '55_osd.cpp', '56_bar.cpp',
-    '60_engine.cpp',
+    '57_stage.cpp', '60_engine.cpp',
     '90_toolmod.cpp'
 )
 

@@ -39,6 +39,12 @@ bool s_leftAltDown = false;  // left Alt is down, as seen by Raw Input
 bool s_holdArmed = false;    // kTimerHold is pending for this Alt press
 bool s_holdShown = false;    // this Alt press opened the overview
 
+// Alt+Shift mouse resize (see the rules at the end of 10_contract.h).
+bool s_resizePolling = false;  // kTimerMouseResize runs for the current chord
+bool s_resizeGaveUp = false;   // this chord found no tiled window; wait for it
+                               // to turn off before trying again
+POINT s_resizeAnchor{};        // cursor position when the chord turned on
+
 // Raw Input keyboard: generic desktop page (0x01), keyboard usage (0x06).
 constexpr USHORT kRawUsagePage = 0x01;
 constexpr USHORT kRawUsageKeyboard = 0x06;
@@ -192,6 +198,7 @@ void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject,
             // A destroyed HWND can be reused by a new window; drop stale state.
             g.pendingVisibility.erase(hwnd);
             g.pendingActivation.erase(hwnd);
+            g.needsNudge.erase(hwnd);
             if (managed) {
                 UnmanageWindow(hwnd);
                 RequestRetile();
@@ -261,6 +268,9 @@ void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject,
                     g.zoomed.insert(hwnd);
                 } else {
                     g.zoomed.erase(hwnd);
+                    // Restored from maximized: the app may miss the resize.
+                    g.needsNudge.insert(hwnd);
+                    RequestNudge();
                 }
                 RequestRetile();
             }
@@ -340,12 +350,87 @@ void DropHold() {
     CloseWorkspaceOverview(true);
 }
 
+// Alt+Shift chord: left Alt and Shift (either) down, Ctrl and Win up.
+bool ResizeChordDown() {
+    return KeyDown(VK_LMENU) && KeyDown(VK_SHIFT) && !KeyDown(VK_CONTROL) &&
+           !KeyDown(VK_LWIN) && !KeyDown(VK_RWIN);
+}
+
+// Ends the mouse-resize poll for this chord and any session it started.
+void StopMouseResize() {
+    KillTimer(g.engineHwnd, kTimerMouseResize);
+    s_resizePolling = false;
+    EndMouseResize();
+}
+
+// kTimerMouseResize, every 16 ms while the chord is held. Starts a session once
+// the cursor has left the anchor's drag-threshold box; then follows the cursor.
+void PollMouseResize() {
+    if (!ResizeChordDown()) {
+        StopMouseResize();
+        return;
+    }
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    if (MouseResizeActive()) {
+        UpdateMouseResize(cursor);
+        return;
+    }
+    const int limitX = 2 * GetSystemMetrics(SM_CXDRAG);
+    const int limitY = 2 * GetSystemMetrics(SM_CYDRAG);
+    const int dx = cursor.x - s_resizeAnchor.x;
+    const int dy = cursor.y - s_resizeAnchor.y;
+    if (dx >= -limitX && dx <= limitX && dy >= -limitY && dy <= limitY) {
+        return;
+    }
+    if (BeginMouseResize(s_resizeAnchor)) {
+        // Without this key, releasing Alt or Shift would open the menu bar or
+        // switch the input language.
+        SendMenuMaskKey();
+    } else {
+        // Nothing tiled under the cursor: give up until the chord turns off.
+        StopMouseResize();
+        s_resizeGaveUp = true;
+    }
+}
+
+// Alt+Shift mouse-resize part of one key event, after HoldKeyEvent. leftAlt is
+// left Alt only; right Alt counts as any other key, as in the hold rules.
+void ResizeKeyEvent(UINT vk, bool keyUp, bool leftAlt) {
+    const bool shift = vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT;
+    if (!ResizeChordDown()) {
+        s_resizeGaveUp = false;
+    }
+    if (keyUp) {
+        if ((leftAlt || shift) && s_resizePolling) {
+            StopMouseResize();
+        }
+        return;
+    }
+    if (leftAlt || shift) {
+        // Auto-repeat key-downs find the poll already running and do nothing.
+        if (!s_resizePolling && !s_resizeGaveUp && ResizeChordDown() &&
+            g.settings.mouseResize && !g.paused && !WorkspaceOverviewOpen()) {
+            GetCursorPos(&s_resizeAnchor);
+            SetTimer(g.engineHwnd, kTimerMouseResize, 16, nullptr);
+            s_resizePolling = true;
+        }
+        return;
+    }
+    // Any other key ends the resize, keeping the ratios (Alt+Shift+1 does).
+    if (s_resizePolling) {
+        StopMouseResize();
+    }
+}
+
 // kTimerHold: left Alt has been held for holdDelayMs. Opens the overview on the
-// focused monitor when Alt is still down and the feature is still enabled.
+// focused monitor when Alt is still down and the feature is still enabled. Never
+// while an Alt+Shift mouse resize is in progress.
 void OpenHoldOverview() {
     s_holdArmed = false;
     const int mon = g.focusedMon;
-    if (!s_leftAltDown || !KeyDown(VK_LMENU) || !HoldEnabled() || mon < 0 ||
+    if (s_resizePolling || !s_leftAltDown || !KeyDown(VK_LMENU) ||
+        !HoldEnabled() || mon < 0 ||
         mon >= static_cast<int>(g.monitors.size())) {
         return;
     }
@@ -374,19 +459,9 @@ void PollHoldOverview() {
     }
 }
 
-// Raw Input keyboard report. Implements the hold-left-Alt rules. Key codes and
-// characters are never logged.
-void OnRawKey(const RAWKEYBOARD& key) {
-    const UINT vk = key.VKey;
-    // Our own masking key, and the 0xFF filler some drivers report.
-    if (vk == kMenuMaskVk || vk == 0xFF) {
-        return;
-    }
-    const bool keyUp = (key.Flags & RI_KEY_BREAK) != 0;
-    // Right Alt (E0) is AltGr on many layouts, so it counts as any other key.
-    const bool leftAlt =
-        (vk == VK_MENU || vk == VK_LMENU) && (key.Flags & RI_KEY_E0) == 0;
-
+// Hold-left-Alt rules for one key event (masking key and filler already
+// dropped by OnRawKey). Key codes and characters are never logged.
+void HoldKeyEvent(UINT vk, bool keyUp, bool leftAlt) {
     if (leftAlt) {
         if (keyUp) {
             s_leftAltDown = false;
@@ -430,6 +505,22 @@ void OnRawKey(const RAWKEYBOARD& key) {
             DisarmHold();
         }
     }
+}
+
+// Raw Input keyboard report: the hold-left-Alt rules, then the Alt+Shift
+// mouse-resize rules, both on the same key event.
+void OnRawKey(const RAWKEYBOARD& key) {
+    const UINT vk = key.VKey;
+    // Our own masking key, and the 0xFF filler some drivers report.
+    if (vk == kMenuMaskVk || vk == 0xFF) {
+        return;
+    }
+    const bool keyUp = (key.Flags & RI_KEY_BREAK) != 0;
+    // Right Alt (E0) is AltGr on many layouts, so it counts as any other key.
+    const bool leftAlt =
+        (vk == VK_MENU || vk == VK_LMENU) && (key.Flags & RI_KEY_E0) == 0;
+    HoldKeyEvent(vk, keyUp, leftAlt);
+    ResizeKeyEvent(vk, keyUp, leftAlt);
 }
 
 LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
@@ -513,6 +604,34 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                 case kTimerHoldPoll:
                     PollHoldOverview();
                     break;
+                case kTimerMouseResize:
+                    PollMouseResize();
+                    break;
+                case kTimerNudge: {
+                    KillTimer(hwnd, kTimerNudge);
+                    const std::vector<HWND> pending(g.needsNudge.begin(),
+                                                    g.needsNudge.end());
+                    g.needsNudge.clear();
+                    int nudged = 0;
+                    for (HWND window : pending) {
+                        WinLoc loc;
+                        if (!Locate(window, &loc) ||
+                            g.hiddenByUs.count(window) > 0 ||
+                            loc.ws != g.monitors[loc.mon].active) {
+                            continue;
+                        }
+                        NudgeWindow(window);
+                        ++nudged;
+                    }
+                    if (nudged > 0) {
+                        HT_LOG(L"nudged %d window(s)", nudged);
+                    }
+                    break;
+                }
+                case kTimerStage:
+                    KillTimer(hwnd, kTimerStage);
+                    RefitStageProxies();
+                    break;
                 default:
                     break;
             }
@@ -539,6 +658,9 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
             UpdateTaskbarIndicators();
             if (!g.settings.holdOverview) {
                 DropHold();
+            }
+            if (!g.settings.mouseResize) {
+                StopMouseResize();
             }
             return 0;
         }
@@ -567,6 +689,7 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                     g.borderedHwnd = nullptr;
                 }
                 DropHold();
+                StopMouseResize();
                 g.paused = true;
             }
             return 0;
@@ -641,6 +764,9 @@ void TeardownEngine(HWND hwnd) {
     KillTimer(hwnd, kTimerBarPoll);
     KillTimer(hwnd, kTimerHold);
     KillTimer(hwnd, kTimerHoldPoll);
+    KillTimer(hwnd, kTimerMouseResize);
+    KillTimer(hwnd, kTimerNudge);
+    KillTimer(hwnd, kTimerStage);
 
     // The hold state belongs to this engine run: the next start begins with Alt
     // released, and an open overview closes before its window is destroyed.
@@ -648,6 +774,10 @@ void TeardownEngine(HWND hwnd) {
     s_holdArmed = false;
     s_holdShown = false;
     CloseWorkspaceOverview(true);
+
+    // Ends a mouse-resize session (ratios kept) and clears its poll state.
+    StopMouseResize();
+    s_resizeGaveUp = false;
 
     // No window may stay hidden behind a dead engine.
     const std::vector<HWND> hidden(g.hiddenByUs.begin(), g.hiddenByUs.end());
@@ -665,6 +795,7 @@ void TeardownEngine(HWND hwnd) {
     }
 
     DestroyTaskbarIndicators();
+    DestroyStageProxies();
     DestroyOsd();
     DeregisterShellHookWindow(hwnd);
     s_shellHookMsg = 0;
@@ -701,6 +832,9 @@ DWORD WINAPI EngineThreadProc(LPVOID) {
     }
 
     LoadSettings(g.settings);
+    // RefreshMonitors creates the workspaces with these layouts.
+    g.appliedWorkspaceLayouts = g.settings.workspaceLayouts;
+    LoadAlwaysFloatApps();
     RestoreLeftoverHiddenWindows();
     RefreshMonitors();
     AdoptExistingWindows();

@@ -767,11 +767,133 @@ void TestFindNeighbor() {
     CHECK(ht::FindNeighbor(rows, 0, D::Right) == -1);
 }
 
+bool Overlaps(const RECT& a, const RECT& b) {
+    return a.left < b.right && b.left < a.right && a.top < b.bottom &&
+           b.top < a.bottom;
+}
+
+void TestMainstage() {
+    LayoutParams p;
+    p.kind = LayoutKind::Mainstage;
+    p.innerGap = 8;
+
+    // One window: only the stage, centred at the default 50 %.
+    ExpectLayout(L"mainstage 1", ht::ComputeLayout(kArea, 1, p),
+                 {Rc(480, 0, 1440, 1080)});
+
+    // A side is three slots of (1080 - 2 * 8) / 3 = 354 px. A cell is the
+    // largest stage-shaped rect in its slot, centred: 315 x 354 in a 472 px
+    // strip. Side windows alternate left, right.
+    ExpectLayout(L"mainstage 3", ht::ComputeLayout(kArea, 3, p),
+                 {Rc(480, 0, 1440, 1080), Rc(78, 0, 393, 354),
+                  Rc(1526, 0, 1841, 354)});
+
+    // Four on the left: the first two keep their slots, the last two share
+    // the third slot side by side (232 x 261, centred in a 232 x 354 box).
+    // Three on the right still get a slot each.
+    ExpectLayout(L"mainstage 8", ht::ComputeLayout(kArea, 8, p),
+                 {Rc(480, 0, 1440, 1080), Rc(78, 0, 393, 354),
+                  Rc(1526, 0, 1841, 354), Rc(78, 362, 393, 716),
+                  Rc(1526, 362, 1841, 716), Rc(0, 770, 232, 1031),
+                  Rc(1526, 724, 1841, 1078), Rc(240, 770, 472, 1031)});
+
+    // Explicit sides: all three side windows on the right; the left stays empty.
+    p.sides = {1, 1, 1};
+    ExpectLayout(L"mainstage all right", ht::ComputeLayout(kArea, 4, p),
+                 {Rc(480, 0, 1440, 1080), Rc(1526, 0, 1841, 354),
+                  Rc(1526, 362, 1841, 716), Rc(1526, 724, 1841, 1078)});
+    // Right, left, then alternating beyond the vector (j = 2 is even: left).
+    p.sides = {1, 0};
+    ExpectLayout(L"mainstage mixed sides", ht::ComputeLayout(kArea, 4, p),
+                 {Rc(480, 0, 1440, 1080), Rc(1526, 0, 1841, 354),
+                  Rc(78, 0, 393, 354), Rc(78, 362, 393, 716)});
+    // Six on the left: two full slots, then a 2x2 grid in the third
+    // (boxes 232 x 173, cells 154 x 173).
+    p.sides = {0, 0, 0, 0, 0, 0};
+    ExpectLayout(L"mainstage 6 left", ht::ComputeLayout(kArea, 7, p),
+                 {Rc(480, 0, 1440, 1080), Rc(78, 0, 393, 354),
+                  Rc(78, 362, 393, 716), Rc(39, 724, 193, 897),
+                  Rc(279, 724, 433, 897), Rc(39, 905, 193, 1078),
+                  Rc(279, 905, 433, 1078)});
+    p.sides.clear();
+
+    // The stage ratio: the setting, then the per-workspace override, clamped.
+    CHECK(Near(ht::SplitRatio(p, 1, 0), 0.5));
+    p.stageRatio = 0.05;
+    CHECK(Near(ht::SplitRatio(p, 4, 0), 0.2));
+    p.ratios = {0.95};
+    CHECK(Near(ht::SplitRatio(p, 4, 0), 0.9));
+    p.ratios = {0.6};
+    CHECK(Near(ht::SplitRatio(p, 4, 0), 0.6));
+    ExpectLayout(L"mainstage 60 %", ht::ComputeLayout(kArea, 1, p),
+                 {Rc(384, 0, 1536, 1080)});
+
+    // Invariants over many counts, gaps and stage widths.
+    const int gaps[] = {0, 8, 7};
+    const double shares[] = {0.2, 0.5, 0.9};
+    for (int gap : gaps) {
+        for (double share : shares) {
+            for (int count = 0; count <= 40; ++count) {
+                LayoutParams q;
+                q.kind = LayoutKind::Mainstage;
+                q.innerGap = gap;
+                q.stageRatio = share;
+                const std::vector<RECT> rects = ht::ComputeLayout(kArea, count, q);
+                bool ok = static_cast<int>(rects.size()) == count;
+                for (size_t i = 0; ok && i < rects.size(); ++i) {
+                    const RECT& rc = rects[i];
+                    ok = rc.left >= kArea.left && rc.top >= kArea.top &&
+                         rc.right <= kArea.right && rc.bottom <= kArea.bottom &&
+                         rc.right - rc.left >= 1 && rc.bottom - rc.top >= 1;
+                    for (size_t j = 0; ok && j < i; ++j) {
+                        ok = !Overlaps(rects[j], rc);
+                    }
+                }
+                if (ok) {
+                    ++g_passed;
+                } else {
+                    ++g_failed;
+                    fwprintf(stderr,
+                             L"" __FILE__ L": mainstage invariant (gap=%d "
+                             L"share=%.1f count=%d)\n",
+                             gap, share, count);
+                }
+            }
+        }
+    }
+
+    // Resizing the stage: dragging its right edge out by 100 px widens it by
+    // 200 (it stays centred), so the dragged edge stays where it was put.
+    {
+        LayoutParams q;
+        q.kind = LayoutKind::Mainstage;
+        q.innerGap = 8;
+        CHECK(ht::ApplyResize(kArea, 3, q, 0, Rc(480, 0, 1540, 1080)));
+        ExpectLayout(L"mainstage resized", ht::ComputeLayout(kArea, 1, q),
+                     {Rc(380, 0, 1540, 1080)});
+        // Works with a single window too.
+        LayoutParams one;
+        one.kind = LayoutKind::Mainstage;
+        CHECK(ht::ApplyResize(kArea, 1, one, 0, Rc(580, 0, 1440, 1080)));
+        CHECK(Near(ht::SplitRatio(one, 1, 0), 760.0 / 1920.0));
+    }
+    // Side windows, small changes and bad indices change nothing.
+    {
+        LayoutParams q;
+        q.kind = LayoutKind::Mainstage;
+        CHECK(!ht::ApplyResize(kArea, 3, q, 1, Rc(0, 0, 300, 531)));
+        CHECK(!ht::ApplyResize(kArea, 3, q, 0, Rc(480, 0, 1442, 1080)));
+        CHECK(!ht::ApplyResize(kArea, 3, q, -1, Rc(480, 0, 1540, 1080)));
+        CHECK(q.ratios.empty());
+        CHECK(!ht::ToggleSplitAt(q, 3, 0));
+    }
+}
+
 void TestNextLayout() {
     LayoutKind k = LayoutKind::Dwindle;
     const LayoutKind want[] = {LayoutKind::MasterStack, LayoutKind::Columns,
                                LayoutKind::Rows, LayoutKind::Monocle,
-                               LayoutKind::Dwindle};
+                               LayoutKind::Mainstage, LayoutKind::Dwindle};
     for (LayoutKind w : want) {
         k = ht::NextLayout(k);
         CHECK(k == w);
@@ -803,6 +925,10 @@ void TestLayoutNames() {
     CHECK(ParsesTo(L"COLUMNS", LayoutKind::Columns));
     CHECK(ParsesTo(L"rows", LayoutKind::Rows));
     CHECK(ParsesTo(L"Monocle", LayoutKind::Monocle));
+    CHECK(ParsesTo(L"mainstage", LayoutKind::Mainstage));
+    CHECK(ParsesTo(L"MainStage", LayoutKind::Mainstage));
+    CHECK(ParsesTo(L"stage", LayoutKind::Mainstage));
+    CHECK(ParsesTo(ht::LayoutName(LayoutKind::Mainstage), LayoutKind::Mainstage));
 
     CHECK(RejectsName(nullptr));
     CHECK(RejectsName(L""));
@@ -823,6 +949,7 @@ int main() {
     TestApplyResize();
     TestToggleSplit();
     TestFindNeighbor();
+    TestMainstage();
     TestNextLayout();
     TestLayoutNames();
 

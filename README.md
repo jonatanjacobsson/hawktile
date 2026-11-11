@@ -21,8 +21,13 @@ workspaces, and your hands stay on the keyboard.
 ## Why you might like it
 
 - **It just tiles.** Open a window and it slots into the layout. Close one and
-  the rest fill the gap. Five layouts: *dwindle*, *master*, *columns*, *rows*
-  and *monocle*.
+  the rest fill the gap. Six layouts: *dwindle*, *master*, *columns*, *rows*,
+  *monocle* and *mainstage*.
+- **A stage for wide screens.** In the *mainstage* layout the window you work
+  in sits in the middle of the screen and the others wait at the sides as
+  small live pictures. Drag one onto the stage, or move focus to it, and it
+  swaps in. Drag tiles around to arrange the sides; clicks and scrolling on a
+  tile go into its window.
 - **Workspaces per monitor.** Up to nine on each screen, switched
   independently. A small indicator on every taskbar shows where you are; click
   a number to jump there. Hold **Alt** to see every workspace with its apps,
@@ -33,7 +38,8 @@ workspaces, and your hands stay on the keyboard.
 - **Feels familiar.** Default keys follow [Omarchy](https://learn.omacom.io/2/the-omarchy-manual/53/hotkeys)'s
   Hyprland setup, with **Alt** instead of Super. Commands use Hyprland's names.
 - **Mouse still works.** Drag a window onto another to swap them, drag its
-  border to resize, and the neighbours follow.
+  border to resize, and the neighbours follow. Or hold **Alt + Shift** and
+  just move the mouse to resize the active window, no clicking.
 - **Looks like Windows.** Indicators follow your light/dark mode, accent color
   and high-contrast settings, and the focused window gets a colored border on
   Windows 11.
@@ -58,15 +64,18 @@ and compile again. Your settings are kept.
 |---|---|
 | **Alt + ← ↑ → ↓** | Focus the window in that direction (crosses monitors) |
 | **Alt + Shift + ← ↑ → ↓** | Swap with the window in that direction |
-| **Hold left Alt** | Workspace overview: drag an app's icon onto another workspace to move its windows there, click a number to switch, click an icon to go to the app |
+| **Hold left Alt** | Workspace overview: point at a workspace and let go of Alt to jump there, drag an app's icon onto another workspace to move its windows there, click a number to switch, click an icon to go to the app |
+| **Hold left Alt + Shift, move the mouse** | Resize the active window (tiled or floating) from the side the cursor is on; the other windows make room when you let go |
 | **Alt + 1 … 9** | Switch workspace |
 | **Alt + Shift + 1 … 9** | Move the window to that workspace and go with it |
 | **Alt + W** | Close the window |
 | **Alt + F** | Fullscreen (maximize) and back |
 | **Alt + T** | Float / tile the window |
+| **Alt + Shift + T** | Never tile this app again (press it again on the app to undo) |
 | **Alt + J** | Flip the split direction (dwindle) |
 | **Alt + L** | Next layout |
 | **Alt + = / −** | Grow the window to the left / right |
+| **Alt + . / −** | The same pair on neighbouring keys. In mainstage: narrow / widen the stage |
 | **Alt + Shift + = / −** | Grow the window down / up |
 | **Alt + M** | Monocle: one window at a time |
 | **Alt + Shift + Enter** | Swap with the master window |
@@ -84,11 +93,11 @@ collapsible sections:
 
 | Section | Settings (defaults) |
 |---|---|
-| **Layout and gaps** | default layout (dwindle) · workspaces per monitor (9) · outer and inner gap (8 px) · master size (55 %) · resize step (5 %) |
+| **Layout and gaps** | default layout (dwindle) · layout per workspace (none) · mainstage width (50 %) · workspaces per monitor (9) · outer and inner gap (8 px) · master size (55 %) · resize step (5 %) |
 | **Workspace indicators** | badges on the taskbar (on) and their offset (12 px) · workspace popup (on) and its duration (2000 ms) · hold Alt for the overview (on) and the hold delay (400 ms) · notification dots (on) |
-| **Window handling** | tile maximized windows · float non-resizable and always-on-top windows · follow activated windows (all on) |
+| **Window handling** | tile maximized windows · float non-resizable and always-on-top windows · follow activated windows · resize with Alt + Shift and the mouse (all on) |
 | **Focus border** | on/off (on) · color (`4C9AFF`, Windows 11 only) |
-| **Rules** | float rules (dialogs, file-copy progress, Picture-in-Picture) · ignore rules (none). Write them as `process:app.exe`, `class:#32770` or `title:text` |
+| **Rules** | float rules (dialogs, file-copy progress, Picture-in-Picture) · ignore rules (none). Write them as `process:app.exe`, `class:#32770` or `title:text`. Apps you float with **Alt + Shift + T** are remembered separately |
 | **Key bindings** | a list of *keys* + *command* pairs, see the commands below |
 | **Advanced** | debug log file (off) |
 
@@ -108,6 +117,7 @@ Bind any key to any of these. `<dir>` is `left`, `right`, `up`, `down` (or
 | `focusmonitor next` · `movetomonitor next` | Monitors |
 | `nextlayout` · `layout <name>` | Layouts |
 | `togglefloating` · `togglemonocle` · `fullscreen` · `togglesplit` | Window modes |
+| `togglealwaysfloat` | Never tile the focused window's app again; run it again on that app to undo |
 | `swapwithmaster` · `growmaster` · `shrinkmaster` | Master layout helpers |
 | `rescan` · `toggletiling` · `closewindow` | Everything else |
 

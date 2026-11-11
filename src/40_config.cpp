@@ -57,6 +57,7 @@ struct NoArgCommand {
 constexpr NoArgCommand kNoArgCommands[] = {
     {L"nextlayout", CommandKind::NextLayout},
     {L"togglefloating", CommandKind::ToggleFloating},
+    {L"togglealwaysfloat", CommandKind::ToggleAlwaysFloat},
     {L"togglemonocle", CommandKind::ToggleMonocle},
     {L"fullscreen", CommandKind::Fullscreen},
     {L"swapwithmaster", CommandKind::SwapWithMaster},
@@ -337,6 +338,28 @@ void ReadWindhawkSettings(Settings& s) {
 
     s.masterRatio = std::clamp(Wh_GetIntSetting(L"layout.masterRatio"), 15, 85) / 100.0;
     s.ratioStep = std::clamp(Wh_GetIntSetting(L"layout.resizeStep"), 1, 25) / 100.0;
+    const int stageWidth = Wh_GetIntSetting(L"layout.stageWidth");
+    s.stageRatio = std::clamp(stageWidth <= 0 ? 50 : stageWidth, 20, 90) / 100.0;
+
+    // One entry per workspace; blanks in between are allowed, so every index is
+    // read. Trailing "use the default" entries are dropped.
+    s.workspaceLayouts.clear();
+    for (int i = 0; i < 9; ++i) {
+        const std::wstring name =
+            Trim(SettingString(L"layout.workspaceLayouts[%d]", i));
+        LayoutKind kind = LayoutKind::Count_;
+        if (!name.empty() && ToLower(name) != L"default" &&
+            !ParseLayoutName(name.c_str(), &kind)) {
+            HT_LOG(L"Invalid layout '%s' for workspace %d, using the default",
+                   name.c_str(), i + 1);
+            kind = LayoutKind::Count_;
+        }
+        s.workspaceLayouts.push_back(kind);
+    }
+    while (!s.workspaceLayouts.empty() &&
+           s.workspaceLayouts.back() == LayoutKind::Count_) {
+        s.workspaceLayouts.pop_back();
+    }
 
     s.focusBorder = Wh_GetIntSetting(L"border.enabled") != 0;
     const std::wstring colorText = SettingString(L"border.color");
@@ -361,6 +384,7 @@ void ReadWindhawkSettings(Settings& s) {
     s.taskbarIndicator = Wh_GetIntSetting(L"indicators.taskbar") != 0;
     s.attentionDots = Wh_GetIntSetting(L"indicators.notificationDots") != 0;
     s.followActivation = Wh_GetIntSetting(L"windows.followActivation") != 0;
+    s.mouseResize = Wh_GetIntSetting(L"windows.mouseResize") != 0;
     s.taskbarIndicatorOffset =
         std::clamp(Wh_GetIntSetting(L"indicators.taskbarOffset"), 0, 2000);
 
@@ -582,7 +606,8 @@ void LoadSettings(Settings& s) {
            L"tileMaximized=%d, workspaceOsd=%d, indicatorDuration=%d ms, "
            L"taskbarIndicator=%d, taskbarIndicatorOffset=%d px, "
            L"attentionDots=%d, followActivation=%d, holdOverview=%d, "
-           L"holdDelayMs=%d, debugLog=%d",
+           L"holdDelayMs=%d, mouseResize=%d, debugLog=%d, stageWidth=%d%%, "
+           L"%d workspace layouts",
            s.outerGap, s.innerGap, s.workspaceCount, LayoutName(s.defaultLayout),
            static_cast<int>(s.floatRules.size()),
            static_cast<int>(s.ignoreRules.size()),
@@ -591,7 +616,10 @@ void LoadSettings(Settings& s) {
            s.osdDurationMs, static_cast<int>(s.taskbarIndicator),
            s.taskbarIndicatorOffset, static_cast<int>(s.attentionDots),
            static_cast<int>(s.followActivation), static_cast<int>(s.holdOverview),
-           s.holdDelayMs, static_cast<int>(s.debugLog));
+           s.holdDelayMs, static_cast<int>(s.mouseResize),
+           static_cast<int>(s.debugLog),
+           static_cast<int>(s.stageRatio * 100.0 + 0.5),
+           static_cast<int>(s.workspaceLayouts.size()));
 }
 
 }  // namespace ht

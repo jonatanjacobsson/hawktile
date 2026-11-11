@@ -67,22 +67,49 @@ the build and tests.
   for** those names in this project's own files or in the session transcripts
   (the audits that produced this file, and the scans that removed old names
   before the first release). None of them read material from those projects.
-## Second development session (0.9.0)
+## Second development session (0.9.0, 0.10.0)
 
-Generated 2026-10-13 with the same script over the planner transcript and both
-subagent transcripts of the session that added the hold-Alt workspace overview.
+Generated 2026-10-14 with the same script over the planner transcript and the
+six subagent transcripts of the session that added the hold-Alt workspace
+overview, Alt + Shift mouse resizing and the resize nudge.
 
 | Participant | Tool calls | Web tools | Network cmds | Other-WM access | Restricted-mod access | Web targets |
 |---|---|---|---|---|---|---|
-| planner (Opus 5.5) | 79 | 0 | 0 | 0 | 0 |  |
+| planner (Opus 5.5) | 138 | 0 | 1 | 0 | 0 |  |
 | a94a07085d91365ec | 22 | 0 | 0 | 0 | 0 |  |
 | a7ad3143be3bc483b | 8 | 0 | 0 | 0 | 0 |  |
+| a24b3ad97b5853582 | 17 | 0 | 0 | 0 | 0 |  |
+| a1adb5ef1343e3476 | 28 | 0 | 0 | 0 | 0 |  |
+| a28836eab5ac09497 | 31 | 0 | 0 | 0 | 0 |  |
+| a651384f70ab8c31f | 12 | 0 | 0 | 0 | 0 |  |
 
-**Implementers (2 Haiku sessions):** zero in every column.
+**Implementers (6 Haiku sessions):** zero in every column.
 
-**Planner:** zero in every column. Earlier in the same session, before this
+**Planner:** the one network command is `gh release create v0.9.0`, which
+published this project's own release (its notes contain links to this
+repository). Earlier in the same session, before this
 feature, the planner published this repository to GitHub (`gh repo create`,
 `git push`) and checked it with `gh repo view`. Those commands only talked to
 this project's own repository, so the network pattern doesn't count them. To
 plan the feature, the planner read this project's sources and the compile
 logic of the locally installed Windhawk editor.
+
+## Third development session (0.11.0)
+
+Generated 2026-10-26 with the same script over the planner transcript and the
+one subagent transcript of the session that added **Alt + Shift + T** (never
+tile an app again).
+
+| Participant | Tool calls | Web tools | Network cmds | Other-WM access | Restricted-mod access | Web targets |
+|---|---|---|---|---|---|---|
+| planner (Opus 5.5), this session's part | 48 | 0 | 0 | 0 | 0 |  |
+| a653c37a07baaf0f0 | 45 | 0 | 0 | 0 | 0 |  |
+
+**Implementer (1 Haiku session):** zero in every column.
+
+**Planner:** this session continued the first session's planner conversation,
+so its transcript repeats that history; the counts above cover only the calls
+made in this session (timestamps from 2026-10-26). None of them used the web or
+the network. The planner read this project's sources and git status, and the
+only call matching the other-WM / restricted-mod patterns is the audit command
+that produced this section, which searches *for* those names.

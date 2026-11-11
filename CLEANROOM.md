@@ -27,7 +27,7 @@ checked against the records in [docs/provenance](docs/provenance/README.md).
 |---|---|---|
 | Owner | Jonatan Jacobsson | Requirements, live testing, decisions |
 | Planner | Claude Opus 5.5 | Architecture, the shared contract (`src/10_contract.h`), a precise brief per task, review and small integration fixes |
-| Implementers | Claude Haiku 5.5, 26 separate sessions | Each wrote or changed one or a few source fragments against the contract. Every brief told them not to look at, search for or reproduce code from other window managers |
+| Implementers | Claude Haiku 5.5, 31 separate sessions | Each wrote or changed one or a few source fragments against the contract. Every brief told them not to look at, search for or reproduce code from other window managers |
 | Researcher | Claude Opus 5.5, one session | Read other Windhawk mods to learn Windhawk engineering practices. Mods that manage window layout were read as **readme and settings only** |
 
 Every brief, follow-up and report is preserved verbatim in
@@ -43,6 +43,7 @@ Every brief, follow-up and report is preserved verbatim in
 | The settings block of an installed Windhawk mod (Windows 11 Taskbar Styler) | Confirming Windhawk's YAML syntax for lists of objects |
 | [Omarchy's hotkeys page](https://learn.omacom.io/2/the-omarchy-manual/53/hotkeys) | The default key assignments, with Alt in place of Super |
 | Hyprland's documented dispatcher names | The command vocabulary (`movefocus`, `swapwindow`, `movetoworkspace`, …). No Hyprland code |
+| Scott Jenson's talk [*Are we really going to use the same Desktop UX forever?*](https://www.youtube.com/watch?v=V7AfAcQwLW0) (transcript, about 29:00 to 32:30) and a sketch by the owner | The idea behind the mainstage layout (0.12.0): a centre focus area with shrunken windows at the sides. Written in one Claude session that also read the talk's page; no code involved, and not covered by the audit below |
 | About 35 open-source Windhawk mods | Windhawk engineering practices, summarised in [docs/research-windhawk-mods.md](docs/research-windhawk-mods.md). No code copied |
 | Ten Windhawk mods that arrange windows | Readme and settings text only, fetched through a filter that stopped before any code |
 
@@ -77,7 +78,7 @@ reads the session transcripts and counts, for every participant, the web
 lookups, network commands, references to other window managers and reads of the
 restricted mods. [The results](docs/provenance/audit/results.md) show:
 
-- **Implementers (26 sessions, across two development sessions):** zero in
+- **Implementers (31 sessions, across three development sessions):** zero in
   every column.
 - **Researcher:** GitHub API reads of Windhawk mods and wiki pages only; the
   window-arranging mods were read through the readme-only filter.

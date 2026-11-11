@@ -41,6 +41,10 @@ windhawk.exe (tray / UI)                windhawk.exe -tool-mod "<mod id>"
   keyboard through Raw Input (`RIDEV_INPUTSINK`) instead of a low-level
   keyboard hook, so a busy engine can never delay anyone's typing. A 100 ms
   poll of the left Alt key closes the overview if a key release was missed.
+  The same stream drives Alt + Shift mouse resizing: while the chord is held a
+  16 ms timer follows the cursor and resizes only the active window; when the
+  keys are released the split ratios are rewritten once from the ones
+  recorded at the start, so no click is ever intercepted.
 
 ## Layout model
 
@@ -60,6 +64,22 @@ Each workspace stores optional per-split ratio overrides and dwindle flips.
 Unset splits keep their defaults, so they stay even when windows come and go.
 Resizing a window with its borders (or `resizeactive`) rewrites only the splits
 next to the moved edges and pins the others, so nothing else moves on screen.
+
+**Mainstage** is the exception. Rect 0 is a centred stage; the other rects are
+side cells in a grid on either side, each with the stage's aspect ratio. All
+of the workspace's windows are placed on the stage rect, stacked as in
+monocle, so the one on top of the z-order is the one in use and the model
+simply follows the z-order: the topmost window takes layout index 0, and the
+window it replaces takes its side cell. The side cells are drawn by
+`57_stage.cpp` as small windows of our own holding live DWM thumbnails of the
+stacked windows. Nothing is moved off screen or shrunk for real, so swapping a
+window onto the stage never resizes it. The price is that side tiles are
+pictures: apps that stop drawing while covered show their last frame. Mouse
+clicks and wheel turns on a tile are mapped through the thumbnail's scale and
+posted to the child window at that point of the real window, which covers
+apps that act on mouse messages but not those that read the cursor position
+or use pointer input. Which side a window's tile is on is stored per window
+(`Workspace::stageSide`); the order within a side is the tiled list's order.
 
 Gaps: the area is grown by half a gap, partitioned, and every slot shrunk by
 half a gap. Outer edges line up exactly with the work area and neighbours are
@@ -81,6 +101,7 @@ Fragments never include each other; everything shared is declared in
 | `src/50_model.cpp` | monitors, workspaces, retiling and every command |
 | `src/55_osd.cpp` | theme resolution, the center workspace indicator and its interactive overview mode (hold left Alt; drag app icons between workspaces) |
 | `src/56_bar.cpp` | workspace badges on each taskbar |
+| `src/57_stage.cpp` | the mainstage layout's side tiles (live DWM thumbnails) |
 | `src/60_engine.cpp` | engine thread, window events, shell hook, lifecycle |
 | `src/90_toolmod.cpp` | Windhawk entry points and the tool-mod launcher |
 | `tests/layout_test.cpp` | unit tests for the layout engine |

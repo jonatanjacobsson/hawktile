@@ -2,7 +2,7 @@
 // @id              hawktile
 // @name            HawkTile - Tiling Window Manager
 // @description     Window Tiling Manager. Stop dragging windows around. This tiles them for you, with per-monitor workspaces and Alt+ shortcuts.
-// @version         0.9.0
+// @version         0.12.0
 // @author          Jonatan Jacobsson
 // @github          https://github.com/jonatanjacobsson
 // @homepage        https://github.com/jonatanjacobsson/hawktile
@@ -21,13 +21,14 @@ or your apps.
 
 ## Features
 - Layouts: **dwindle** (binary splits), **master** (master-stack),
-  **columns**, **rows**, **monocle**. Chosen per workspace.
+  **columns**, **rows**, **monocle**, **mainstage** (one window on a centre
+  stage, the others as small live tiles at the sides). Chosen per workspace.
 - Up to 9 workspaces per monitor, switched independently on each monitor.
 - Inner and outer gaps, adjustable split sizes.
 - Directional focus and swap, crossing to the neighbouring monitor at the edge.
 - Drag a tiled window onto another to swap them, or onto another monitor to
   move it there. Resize with the normal window borders and the neighbours
-  follow.
+  follow, or hold Alt + Shift and just move the mouse.
 - Workspace indicator on every taskbar, with notification dots.
 - Hold Alt to see every workspace and drag apps between them.
 - Float and ignore rules by process, window class or title.
@@ -41,15 +42,18 @@ Hyprland bindings, with Alt in place of Super.
 |---|---|
 | Alt + Arrows | Focus the window in that direction |
 | Alt + Shift + Arrows | Swap with the window in that direction |
-| Hold left Alt | Workspace overview: drag app icons between workspaces |
+| Hold left Alt | Workspace overview: point at a workspace and let go to jump there, or drag app icons between workspaces |
+| Hold left Alt + Shift, move the mouse | Resize the active window from the side the cursor is on |
 | Alt + 1..9 | Switch workspace |
 | Alt + Shift + 1..9 | Move window to workspace and follow it |
 | Alt + W | Close window |
 | Alt + F | Fullscreen (maximize) / restore |
 | Alt + T | Toggle floating / tiling |
+| Alt + Shift + T | Never tile this app again (press again to undo) |
 | Alt + J | Toggle split direction (dwindle) |
 | Alt + L | Next layout |
 | Alt + Equal / Minus | Grow the window to the left / right |
+| Alt + Period / Minus | The same pair on neighbouring keys. In mainstage: narrow / widen the stage |
 | Alt + Shift + Equal / Minus | Grow the window down / up |
 | Alt + M | Toggle monocle |
 | Alt + Shift + Enter | Swap with master |
@@ -68,9 +72,10 @@ Command names follow Hyprland's dispatchers. `<dir>` is left, right, up, down
 `workspace <1-9|next|prev>`, `movetoworkspace <n>` (you follow),
 `movetoworkspacesilent <n>` (you stay), `focusmonitor next`,
 `movetomonitor next`, `nextlayout`,
-`layout <dwindle|master|columns|rows|monocle>`, `togglefloating`,
+`layout <dwindle|master|columns|rows|monocle|mainstage>`, `togglefloating`,
 `togglemonocle`, `fullscreen`, `togglesplit`, `swapwithmaster`, `growmaster`,
-`shrinkmaster`, `rescan`, `toggletiling`, `closewindow`.
+`shrinkmaster`, `rescan`, `toggletiling`, `closewindow`,
+`togglealwaysfloat` (remember the focused window's app as never tiled; again to undo).
 
 Keys are written like `alt+shift+h`, `ctrl+alt+f1`, `win+alt+left`. Most
 `win+<key>` combinations are reserved by Explorer and will fail to register;
@@ -85,7 +90,8 @@ ones are dim, and under each workspace you see the icons of its apps.
 Hold the left Alt key for a moment and the same panel opens and stays while
 you hold it. Drag an app's icon onto another workspace to move that app's
 windows there, click a number to switch, or click an icon to go to the app.
-Let go of Alt to close it. The right Alt key (AltGr) never opens it.
+Let go of Alt to close it; if the mouse is over a workspace when you let go,
+you jump there. The right Alt key (AltGr) never opens it.
 
 A compact version sits on the left side of every taskbar; click a number to
 switch. When an app on another workspace flashes in the taskbar (a new
@@ -93,6 +99,34 @@ message, a call), a small dot appears on that workspace until you open the
 app. Clicking a Windows notification of an app on another workspace switches
 there and opens the app. Everything follows your Windows theme: light or dark
 mode, your accent color, and high contrast.
+
+## Mainstage
+Made for wide screens: the window you work in sits on a stage in the middle
+of the screen, and the workspace's other windows wait at the sides as small
+live pictures. Each side stacks up to three; with more, the first two stay
+large and the rest share the last place in a small grid.
+Drag a side tile onto the stage, or move focus to it with Alt + Arrows, and
+it swaps onto the stage; the window that was there takes its place at the
+side. A window you open or switch to (Alt + Tab, the taskbar) goes straight
+to the stage.
+
+Arrange the sides with the mouse: drag a tile onto another tile to swap them,
+or into free space on either side to move it to the end of that side. Drag
+the stage window by its title bar onto a tile to trade places with it, or
+into free space at a side to put it away there. Hold Alt while dragging a
+tile, or any window by its title bar, and drop it on a workspace of the
+overview to send it there.
+
+Clicks, right-clicks and the mouse wheel on a tile go into the window it
+shows, at the matching spot, without bringing it to the stage. This works
+with most apps, not all: the tile is a live picture of a window that stays
+stacked on the stage at full size, so typing still needs the stage, and
+dragging inside a tile moves the tile.
+
+Pick the layout with Alt + L, with `layout mainstage`, as the default layout,
+or for single workspaces under *Layout per workspace*. Alt + Minus widens the
+stage and Alt + Period narrows it; so do the stage window's border and the
+*Mainstage width* setting.
 
 ## Maximized windows
 Windows that are maximized when HawkTile picks them up are restored and tiled.
@@ -122,6 +156,16 @@ the mod starts.
     - columns: Columns
     - rows: Rows
     - monocle: Monocle
+    - mainstage: Mainstage (centre stage, live tiles at the sides)
+  - workspaceLayouts: [""]
+    $name: Layout per workspace
+    $description: Optional. The first entry is the layout of workspace 1, the second of workspace 2, and so on. Write dwindle, master, columns, rows, monocle or mainstage. Leave an entry empty (or write default) to use the default layout
+  - stageWidth: 50
+    $name: Mainstage width (%)
+    $description: Share of the screen width the stage takes in the mainstage layout. The rest is split between the two sides
+    #! $min: 20
+    #! $max: 90
+    #! $format: slider
   - workspaces: 9
     $name: Workspaces per monitor
     #! $min: 1
@@ -187,6 +231,9 @@ the mod starts.
   - followActivation: true
     $name: Follow activated windows
     $description: When a window on another workspace brings itself to the front (for example after you click its notification), switch to that workspace
+  - mouseResize: true
+    $name: Resize with Alt+Shift and the mouse
+    $description: Hold the left Alt key and Shift and move the mouse (no click) to resize the active window, tiled or floating, from the side the cursor is on. Other tiled windows make room when you let go
   $name: Window handling
 - border:
   - enabled: true
@@ -203,7 +250,7 @@ the mod starts.
     - class:OperationStatusWindow
     - title:Picture-in-Picture
     $name: Float rules
-    $description: Windows that float instead of tiling. process:<exe>, class:<class>, or title:<text in the title>
+    $description: Windows that float instead of tiling. process:<exe>, class:<class>, or title:<text in the title>. Apps you float with Alt+Shift+T are remembered separately; press it again on the app to undo
   - ignore: [""]
     $name: Ignore rules
     $description: Windows HawkTile never touches. Same syntax as the float rules
@@ -267,11 +314,15 @@ the mod starts.
     - command: fullscreen
   - - keys: alt+t
     - command: togglefloating
+  - - keys: alt+shift+t
+    - command: togglealwaysfloat
   - - keys: alt+j
     - command: togglesplit
   - - keys: alt+l
     - command: nextlayout
   - - keys: alt+equals
+    - command: resizeactive left
+  - - keys: alt+period
     - command: resizeactive left
   - - keys: alt+minus
     - command: resizeactive right
@@ -303,7 +354,8 @@ the mod starts.
 //
 // build.ps1 concatenates the fragments in order into ONE translation unit:
 //   00_header.wh.cpp, 10_contract.h, 20_layout.cpp, 30_win32.cpp,
-//   40_config.cpp, 50_model.cpp, 60_engine.cpp, 90_toolmod.cpp
+//   40_config.cpp, 50_model.cpp, 55_osd.cpp, 56_bar.cpp, 57_stage.cpp,
+//   60_engine.cpp, 90_toolmod.cpp
 // Fragments therefore never #include each other. Everything a fragment needs
 // from another fragment is declared here. Do not change these signatures in a
 // fragment; if a change is needed, it is made here first.
@@ -321,6 +373,7 @@ the mod starts.
 #include <cwchar>
 #include <cwctype>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -371,14 +424,17 @@ inline constexpr UINT_PTR kTimerBar = 6;              // coalesced taskbar-indic
 inline constexpr UINT_PTR kTimerBarPoll = 7;          // periodic taskbar-indicator check, 1000 ms
 inline constexpr UINT_PTR kTimerHold = 8;             // left Alt held long enough → overview, settings.holdDelayMs
 inline constexpr UINT_PTR kTimerHoldPoll = 9;         // overview open: is left Alt still down? 100 ms
-inline constexpr int kHotkeyIdBase = 0x100;           // hotkey id = base + binding index
+inline constexpr UINT_PTR kTimerMouseResize = 10;     // Alt+Shift held: follow the mouse, 16 ms
+inline constexpr UINT_PTR kTimerNudge = 11;           // re-send sizes to g.needsNudge, 300 ms (coalesced)
+inline constexpr UINT_PTR kTimerStage = 12;           // re-fit the Mainstage side tiles, 250 ms (coalesced)
+inline constexpr int kHotkeyIdBase = 0x100;          // hotkey id = base + binding index
 inline constexpr BYTE kMenuMaskVk = 0xE8;             // unassigned VK used to mask Alt/Win
 
 // =============================================================================
 // Layout (20_layout.cpp) — pure functions, no Win32 calls except RECT type.
 // =============================================================================
 
-enum class LayoutKind { Dwindle, MasterStack, Columns, Rows, Monocle, Count_ };
+enum class LayoutKind { Dwindle, MasterStack, Columns, Rows, Monocle, Mainstage, Count_ };
 enum class Direction { Left, Right, Up, Down };
 
 struct LayoutParams {
@@ -392,13 +448,20 @@ struct LayoutParams {
     // Dwindle only: flips[i] != 0 inverts the automatic orientation of split i
     // (vertical ↔ horizontal). Ignored by the other layouts.
     std::vector<int> flips;
+    // Mainstage only: default share of the area's width the stage takes.
+    double stageRatio = 0.5;
+    // Mainstage only: sides[j] != 0 puts side window j (layout index j + 1) on
+    // the right of the stage, 0 on the left. Side windows beyond the vector
+    // alternate: even j left, odd j right.
+    std::vector<int> sides;
 };
 
 // Returns exactly `count` rects tiling `area` (count <= 0 → empty vector).
 // Gap rule: outer edges of the result coincide with `area`; neighbouring
 // rects are separated by exactly innerGap px. Every rect has width/height >= 1.
+// (Mainstage follows its own rules, below.)
 //
-// Every layout except Monocle is a sequence of count-1 binary splits of the
+// Every layout except Monocle and Mainstage is a sequence of count-1 binary splits of the
 // gap-expanded area. Split i cuts the remaining region; window i takes side A
 // (the left part of a vertical cut, the top part of a horizontal cut), windows
 // i+1.. continue in side B. The last window takes what remains. Orientation:
@@ -409,6 +472,20 @@ struct LayoutParams {
 //  - Monocle:     no splits; every rect == area.
 // The ratio of split i is SplitRatio(p, count, i).
 // Cut position = lo + lround((hi - lo) * ratio) on the remaining region's extent.
+//
+// Mainstage: rect 0 is the STAGE, the full height of `area`, horizontally
+// centred, lround(width * SplitRatio(p, count, 0)) wide. Rects 1.. are SIDE
+// CELLS: side window j (rect j + 1) goes left or right of the stage as
+// p.sides says, and each side fills in order. A side is the strip between the
+// area's edge and the stage, innerGap away from the stage. It is divided into
+// three equal SLOTS stacked from the top, innerGap apart. With up to three
+// windows on a side each gets a slot. With more, the first two keep their
+// slots and the rest share the last slot in a grid of boxes, innerGap apart,
+// filled row by row: columns = the smallest c with c * c >= rest, rows =
+// ceil(rest / c) (2 side by side, then 2x2, 3x2, 3x3, ...). A cell is the
+// largest rect with the stage's aspect ratio inside its slot or box, centred,
+// so a window sized for the stage scales into its cell without bars. All
+// rects lie inside `area`.
 std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams& p);
 
 // Effective ratio of split i: p.ratios[i] if present and 0 < r < 1 (clamped to
@@ -417,6 +494,8 @@ std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams&
 //   MasterStack:  i == 0 ? masterRatio : 1.0 / (count - i)   (equal stack rows)
 //   Columns/Rows: 1.0 / (count - i)                          (equal slots)
 // masterRatio is clamped to [0.05, 0.95]. Returns 0.5 for out-of-range i.
+// Mainstage has one ratio, "split" 0 for any count: the stage's share of the
+// width, p.ratios[0] if set, else p.stageRatio, clamped to [0.2, 0.9].
 double SplitRatio(const LayoutParams& p, int count, int split);
 
 // The user resized tiled window `index` (its position in the same window list
@@ -443,6 +522,10 @@ double SplitRatio(const LayoutParams& p, int count, int split);
 //     are added or removed.
 // p.ratios is padded with 0.0 up to count-1 entries first. Returns true if
 // any ratio changed. Monocle, count < 2 or a bad index → false, p unchanged.
+// Mainstage: only index 0 (the stage) can be resized, with any count >= 1. A
+// width change of more than 2 px against the current stage rect is applied
+// twice (the stage stays centred, so the dragged edge ends where it was put):
+// p.ratios[0] = (stageWidth + 2 * change) / areaWidth, clamped to [0.2, 0.9].
 bool ApplyResize(const RECT& area, int count, LayoutParams& p, int index,
                  const RECT& newRect);
 
@@ -462,7 +545,7 @@ bool ToggleSplitAt(LayoutParams& p, int count, int index);
 int FindNeighbor(const std::vector<RECT>& rects, int from, Direction dir);
 
 LayoutKind NextLayout(LayoutKind k);           // cycles, skipping Count_
-const wchar_t* LayoutName(LayoutKind k);       // "dwindle","master","columns","rows","monocle"
+const wchar_t* LayoutName(LayoutKind k);       // "dwindle","master","columns","rows","monocle","mainstage"
 bool ParseLayoutName(const wchar_t* s, LayoutKind* out);  // case-insensitive, inverse of LayoutName
 
 // =============================================================================
@@ -491,9 +574,12 @@ enum class CommandKind {
     GrowMaster,
     ShrinkMaster,
     ResizeActive,           // dir: push the focused window's boundary toward dir
+                            // (Mainstage: right/up widen the stage, left/down
+                            // narrow it, by settings.ratioStep, within 0.2..0.9)
     Rescan,                 // re-read monitors, adopt new windows, retile
     ToggleTiling,           // pause / resume tiling
     CloseWindow,
+    ToggleAlwaysFloat,      // remember / forget the focused window's app as "never tile"
 };
 
 struct Command {
@@ -527,6 +613,10 @@ struct Settings {
     LayoutKind defaultLayout = LayoutKind::Dwindle;  // layout.default
     double masterRatio = 0.55;       // layout.masterRatio (percent, 55), clamped 15..85
     double ratioStep = 0.05;         // layout.resizeStep (percent, 5), clamped 1..25
+    double stageRatio = 0.5;         // layout.stageWidth (percent, 50), clamped 20..90
+    // layout.workspaceLayouts[i]: layout of workspace i + 1 on every monitor.
+    // Count_ = "use defaultLayout" (empty, "default" or unknown text). Up to 9.
+    std::vector<LayoutKind> workspaceLayouts;
     bool focusBorder = true;         // border.enabled
     COLORREF focusBorderColor = RGB(0x4C, 0x9A, 0xFF);  // border.color ("RRGGBB" or "#RRGGBB")
     bool floatNonResizable = true;   // windows.floatNonResizable
@@ -536,6 +626,7 @@ struct Settings {
     int osdDurationMs = 2000;        // indicators.popupDuration; <= 0 → 2000, clamped 100..10000
     bool holdOverview = true;        // indicators.holdAlt
     int holdDelayMs = 400;           // indicators.holdDelay; <= 0 → 400, clamped 100..2000
+    bool mouseResize = true;         // windows.mouseResize (Alt+Shift + move the mouse)
     bool taskbarIndicator = true;    // indicators.taskbar
     bool attentionDots = true;       // indicators.notificationDots
     bool followActivation = true;    // windows.followActivation
@@ -582,9 +673,11 @@ inline constexpr DefaultBinding kDefaultBindings[] = {
     {L"alt+w", L"closewindow"},
     {L"alt+f", L"fullscreen"},
     {L"alt+t", L"togglefloating"},
+    {L"alt+shift+t", L"togglealwaysfloat"},
     {L"alt+j", L"togglesplit"},
     {L"alt+l", L"nextlayout"},
     {L"alt+equals", L"resizeactive left"},
+    {L"alt+period", L"resizeactive left"},
     {L"alt+minus", L"resizeactive right"},
     {L"alt+shift+equals", L"resizeactive down"},
     {L"alt+shift+minus", L"resizeactive up"},
@@ -623,9 +716,10 @@ bool ParseHotkey(const wchar_t* text, UINT* modifiers, UINT* vk);
 //   movefocus <dir>          swapwindow <dir>         resizeactive <dir>
 //   workspace N|next|prev    movetoworkspace N        movetoworkspacesilent N
 //   focusmonitor next        movetomonitor next
-//   nextlayout               layout dwindle|master|columns|rows|monocle
+//   nextlayout               layout dwindle|master|columns|rows|monocle|mainstage
 //   togglefloating  togglemonocle  fullscreen  togglesplit  swapwithmaster
 //   growmaster  shrinkmaster  rescan  toggletiling  closewindow
+//   togglealwaysfloat
 bool ParseCommand(const wchar_t* text, Command* out);
 
 // "process:notepad.exe" | "class:#32770" | "title:Picture-in-Picture".
@@ -676,7 +770,8 @@ bool IsWindowCloaked(HWND hwnd);
 //          neither WS_THICKFRAME nor full WS_CAPTION;
 //          visible frame smaller than 40x40 px (only checked when visible);
 //          matches settings.ignoreRules.
-//  Float:  matches settings.floatRules; has an owner window; (floatTopmost &&
+//  Float:  its processName is in g.alwaysFloatApps (apps remembered with
+//          togglealwaysfloat); matches settings.floatRules; has an owner window; (floatTopmost &&
 //          WS_EX_TOPMOST); (floatNonResizable && !WS_THICKFRAME).
 //  Tile:   everything else.
 Eligibility ClassifyWindow(HWND hwnd, const Settings& settings);
@@ -711,8 +806,20 @@ void ClearFocusBorder(HWND hwnd);
 // Workspace visibility. Hide: insert into g.hiddenByUs FIRST, then
 // ShowWindowAsync(SW_HIDE). Show: erase from g.hiddenByUs FIRST, then
 // ShowWindowAsync(SW_SHOWNA). Both call PersistHiddenList().
+// ShowForWorkspace also inserts hwnd into g.needsNudge and calls
+// RequestNudge().
 void HideForWorkspace(HWND hwnd);
 void ShowForWorkspace(HWND hwnd);
+
+// Forces a fresh WM_SIZE without changing the final size: reads GetWindowRect,
+// then two SetWindowPos calls (SWP_NOZORDER | SWP_NOOWNERZORDER |
+// SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS, so a hung app cannot block us): first
+// one pixel narrower, then the original rect. Skips hidden, minimized and
+// maximized windows.
+void NudgeWindow(HWND hwnd);
+// SetTimer(g.engineHwnd, kTimerNudge, 300) — restarts the delay, so a burst of
+// shows/restores is nudged once, after it settles.
+void RequestNudge();
 
 // Mod storage key "hiddenWindows": comma-separated "hwnd:pid" hex pairs of
 // g.hiddenByUs, via Wh_SetStringValue. RestoreLeftoverHiddenWindows reads it
@@ -722,6 +829,15 @@ void ShowForWorkspace(HWND hwnd);
 // Under HT_STANDALONE both are no-ops.
 void PersistHiddenList();
 void RestoreLeftoverHiddenWindows();
+
+// Apps the user told HawkTile never to tile (togglealwaysfloat). Mod storage
+// key "alwaysFloatApps": lowercase exe file names (as in
+// WindowFacts::processName) joined with '|'. Load replaces g.alwaysFloatApps
+// with the stored set (empty when missing) and logs how many apps it holds;
+// Save writes the set back (Wh_DeleteValue when empty). Under HT_STANDALONE
+// both only touch memory.
+void LoadAlwaysFloatApps();
+void SaveAlwaysFloatApps();
 
 // =============================================================================
 // Model (50_model.cpp)
@@ -736,6 +852,10 @@ struct Workspace {
     // default of split 0 comes from settings.masterRatio at layout time.
     std::vector<double> ratios;
     std::vector<int> flips;       // LayoutParams::flips (dwindle split orientation)
+    // Mainstage: which side each tiled window's tile is on (0 left, 1 right).
+    // A window without an entry gets the side with fewer tiles at the next
+    // Retile; entries of windows that left the workspace are dropped there.
+    std::unordered_map<HWND, int> stageSide;
     HWND lastFocus = nullptr;
 };
 
@@ -769,6 +889,18 @@ struct EngineState {
     // Managed windows that asked for attention (FlashWindowEx → shell hook
     // HSHELL_FLASH) and have not been activated since.
     std::unordered_set<HWND> attention;
+    // Windows that were just shown again (ShowForWorkspace) or just restored
+    // from maximized (engine, EVENT_OBJECT_LOCATIONCHANGE zoomed → not zoomed).
+    // Some apps (Revit) miss the resize that follows and keep painting at
+    // their old size, leaving the rest of the window black; kTimerNudge
+    // re-sends their size (NudgeWindow) once things have settled.
+    std::unordered_set<HWND> needsNudge;
+    // Lowercase exe names whose windows always float (togglealwaysfloat),
+    // persisted in mod storage by Load/SaveAlwaysFloatApps.
+    std::unordered_set<std::wstring> alwaysFloatApps;
+    // settings.workspaceLayouts as last applied to the workspaces, so a
+    // settings reload only touches the workspaces whose entry changed.
+    std::vector<LayoutKind> appliedWorkspaceLayouts;
     HWND dragHwnd = nullptr;           // window of the last EVENT_SYSTEM_MOVESIZESTART
     RECT dragStartFrame{};             // its visible frame when the drag started
 };
@@ -785,8 +917,9 @@ void RefreshMonitors();
 
 // Applies g.settings after a reload: resizes every monitor's workspace vector
 // to workspaceCount (windows from removed workspaces move into the last
-// remaining one and are shown if that one is active), then RetileAll() and
-// UpdateFocusBorder().
+// remaining one and are shown if that one is active); every workspace whose
+// settings.workspaceLayouts entry differs from g.appliedWorkspaceLayouts and
+// names a layout switches to it; then RetileAll() and UpdateFocusBorder().
 void ApplySettingsChange();
 
 bool Locate(HWND hwnd, WinLoc* loc);           // linear scan of all lists
@@ -805,9 +938,46 @@ void UnmanageWindow(HWND hwnd);
 // Lays out the active workspace of `mon`: tiled windows that are not in
 // g.hiddenByUs && !IsIconic && !IsZoomed, inside rcWork deflated by
 // outerGap, using ComputeLayout. A window whose PlaceWindow returns false is
-// moved to the floating list (logged). No-op while g.paused.
+// moved to the floating list (logged). Lays nothing out while g.paused.
+//
+// Mainstage: every layout window is placed on the STAGE rect (rect 0), stacked
+// like monocle, so the one on top of the z-order is the one in use. Before
+// laying out, that topmost layout window is swapped into layout index 0 (the
+// stage follows focus; the window that leaves the stage takes the other's
+// place in the list and its side). Then stale ws.stageSide entries are
+// dropped and side windows without one get the side with fewer tiles (left
+// on a tie). The windows at index 1.. are shown in their side cells as live
+// scaled-down tiles by SyncStageProxies(), which Retile and RetileAll always
+// call last, paused or not.
 void Retile(int mon);
 void RetileAll();
+
+// One Mainstage side window: the real window (stacked under the stage window)
+// and the side cell its tile is drawn in, in screen pixels.
+struct StageTile {
+    HWND hwnd = nullptr;
+    RECT cell{};
+};
+// Every side window of every monitor whose active workspace uses Mainstage:
+// layout windows 1.. with rects 1.. of ComputeLayout. Empty while g.paused.
+std::vector<StageTile> StageSideTiles();
+
+// Mainstage drag and drop: tiled window `hwnd` (a side tile that was dragged,
+// or the stage window after the user moved it by its title bar) was dropped
+// with the mouse at screen point `pt`. No-op unless hwnd is a layout window of
+// an active Mainstage workspace. By what lies under pt:
+//  - its own slot: nothing;
+//  - the stage (hwnd is a side window): FocusWindow(hwnd), so it takes the stage;
+//  - another window's tile, hwnd is the stage window: FocusWindow(that window)
+//    (they trade places);
+//  - another window's tile, hwnd is a side window: the two swap places in the
+//    tiled list and swap sides;
+//  - elsewhere left or right of the stage, inside the monitor's work area:
+//    hwnd moves to the end of that side (end of the tiled list, stageSide set).
+//    When hwnd was the stage window, the next layout window is focused so it
+//    takes the stage; needs at least two layout windows.
+// Always ends with Retile(its monitor).
+void StageDropWindow(HWND hwnd, POINT pt);
 // SetTimer(g.engineHwnd, kTimerRetile, 15) — coalesces bursts of events.
 void RequestRetile();
 
@@ -832,6 +1002,8 @@ HWND CommandTarget();
 // Called on EVENT_SYSTEM_FOREGROUND. If managed: g.focusedMon = its monitor,
 // its workspace's lastFocus = hwnd. Then UpdateFocusBorder(). Also clears the
 // resolved managed window from g.attention (RequestBarUpdate() if it was there).
+// A tiled window on an active Mainstage workspace: Retile(its monitor) first,
+// which moves it onto the stage.
 void OnFocusChanged(HWND hwnd);
 
 // "Follow activation": brings the workspace that holds managed window hwnd on
@@ -858,7 +1030,10 @@ bool WorkspaceHasAttention(int mon, int wsIndex);
 void UpdateFocusBorder();
 
 // After a user drag or border resize (EVENT_SYSTEM_MOVESIZEEND) of a managed
-// window: if its visible-frame center is now on another monitor → a floating
+// window: if the mouse is over a workspace column of the open overview
+// (OverviewDropTarget) → MoveWindowToWorkspace(hwnd, that monitor, that
+// workspace), OverviewDropDone(), RequestRetile() and nothing else. Otherwise:
+// if its visible-frame center is now on another monitor → a floating
 // window just joins that monitor's active workspace (not moved), a tiled one
 // goes through MoveWindowToMonitor. Otherwise, for a tiled window in a
 // non-monocle layout: if its visible frame's width or height differs by more
@@ -870,6 +1045,44 @@ void UpdateFocusBorder();
 // its center lies inside the visible frame of another tiled window of the same
 // workspace, swap them in the tiled vector. Always RequestRetile().
 void OnUserDragEnd(HWND hwnd);
+
+// ---- Alt+Shift mouse resize ("hold the keys and move the mouse") -----------
+// No click is involved: while left Alt + Shift are held, moving the mouse
+// resizes the ACTIVE window (CommandTarget()), tiled or floating. The edges
+// that move are picked by where the cursor was, relative to that window's
+// center, when the chord started: left of center → its left edge, else its
+// right edge; above center → its top edge, else its bottom edge. Moving the
+// mouse outward grows the window toward that side, inward shrinks it.
+// While the keys are held ONLY the active window changes (live, PlaceWindow);
+// the other tiled windows make room once, when the session ends.
+//
+// Starts a session for CommandTarget(). Qualifies: a managed window on its
+// monitor's active workspace that is not minimized or maximized, and if tiled,
+// in a non-monocle layout with >= 2 layout windows and present in
+// LayoutWindowsOf(ws). Otherwise returns false and nothing is recorded.
+// Records: the window, tiled or floating, its monitor and workspace; for a
+// tiled window its index in LayoutWindowsOf(ws), the count, the layout area,
+// a copy of ws.ratios and the start rect = its slot from ComputeLayout with
+// the start params (NOT the visible frame: apps with a minimum size never
+// match their slot); for a floating window start rect = GetVisibleFrame. Plus
+// the start cursor and the chosen edges. Changes nothing yet. Ends a previous
+// session first.
+bool BeginMouseResize(POINT cursor);
+// newRect = start rect with the chosen edges shifted by the cursor delta,
+// each moved edge kept at least 50 px from its opposite edge; a floating
+// window is also kept inside its monitor's work area. PlaceWindow(hwnd,
+// newRect) only — no ratios, no Retile. No-op without a session or when the
+// delta did not change since the last call; ends the session (without
+// applying) when the window is no longer where it was recorded.
+void UpdateMouseResize(POINT cursor);
+// Ends the session. Tiled window whose rect changed: params = LayoutParamsOf
+// with the RECORDED start ratios, ApplyResize(area, count, params, index,
+// last newRect); if it changed anything ws.ratios = params.ratios; then
+// Retile(mon) either way (neighbours follow, the window snaps to its slot).
+// Floating window: nothing more. Logs once ("mouse-resized window %p") when
+// something changed. No-op without a session.
+void EndMouseResize();
+bool MouseResizeActive();
 
 // Executes a command (see CommandKind). While g.paused only ToggleTiling and
 // Rescan do anything.
@@ -935,14 +1148,32 @@ void ShowWorkspaceOsd(int mon);
 // Opening while the timed popup is visible converts it (its timer is killed).
 // No-op for bad `mon`.
 void ShowWorkspaceOverview(int mon);
-// Closes the overview. cancelDrag == false (left Alt released): hides now, or —
-// while a mouse button press or drag on the panel is in progress — right after
-// that press ends (the drop or click still happens). cancelDrag == true: any
+// Hover: while nothing is pressed, the column under the mouse (its whole zone,
+// badge and icons together) gets a light accent tint. Hover is only set by real
+// mouse movement over the panel, so a panel that opens under a resting cursor
+// has no hover; a re-render keeps an existing hover, re-hit-tested at the
+// cursor. A press anywhere in a column that is not on an icon counts as the
+// badge (click → switch).
+// Closes the overview. cancelDrag == false (left Alt released): if a column is
+// hovered and no press is in progress, SwitchWorkspace(mon, hovered column)
+// first (no-op when already active), then hides; while a mouse button press or
+// drag on the panel is in progress it hides right after that press ends
+// instead (the drop or click still happens, no hover switch). cancelDrag == true: any
 // press or drag is abandoned without effect and the panel hides now.
 // The window goes back to click-through. No-op when the overview is not open.
 void CloseWorkspaceOverview(bool cancelDrag);
 // True while the overview is open (including a press that outlives Alt).
 bool WorkspaceOverviewOpen();
+// Dragging something else (a window by its title bar, a Mainstage side tile)
+// onto the open overview. Returns true when the overview is open and screen
+// point `screen` is over one of its workspace columns, with the overview's
+// monitor and that workspace's 0-based index (either pointer may be null).
+// Also moves the column highlight (the hover) to that column, or removes it
+// when there is none, so the drag shows where it would land.
+bool OverviewDropTarget(POINT screen, int* mon, int* wsIndex);
+// The drag ended: removes that highlight, so letting go of Alt right after a
+// drop does not switch workspace.
+void OverviewDropDone();
 // Re-renders the open overview for its monitor so it shows current windows;
 // no-op when it is not open or while a press or drag is in progress. The
 // engine calls it from the coalesced kTimerBar refresh.
@@ -982,6 +1213,53 @@ void UpdateTaskbarIndicators();
 void DestroyTaskbarIndicators();  // engine teardown; also shuts down GDI+
 
 // =============================================================================
+// Mainstage side tiles (57_stage.cpp)
+// =============================================================================
+
+inline constexpr wchar_t kStageWindowClass[] = L"HawkTileStage";
+// Mainstage side windows are this much wider than the stage window, to the
+// left, so they are never fully covered (RetileWindows).
+inline constexpr LONG kStageSliver = 2;
+
+// Makes the side tiles on screen match StageSideTiles(): one small borderless
+// window per tile (tool window, never activated, rounded on Windows 11, put
+// at the bottom of the z-order when created so floating windows stay above
+// it), filling the tile's cell and showing a live DWM thumbnail of the real
+// window, scaled to fit the cell and centred, with the invisible resize
+// borders cropped away; the rest of the cell is the theme background. Tiles
+// that are no longer wanted, or whose window is gone, are destroyed. Starts
+// kTimerStage (250 ms), because the real windows reach their size
+// asynchronously.
+//
+// Mouse on a tile:
+//  - Press the left button and move further than twice the system drag
+//    threshold → the tile itself follows the cursor (topmost while dragged),
+//    and OverviewDropTarget(cursor) highlights the overview column under it.
+//    On release it returns to its cell; over an overview column the real
+//    window goes to that workspace (MoveWindowToWorkspace, OverviewDropDone),
+//    otherwise StageDropWindow(real window, cursor) decides.
+//  - A left click without dragging, a double click, a right or middle click
+//    and the mouse wheel are FORWARDED into the real window: the tile point is
+//    mapped through the thumbnail's scale to a screen point of the real
+//    window, the deepest child window there is found with
+//    ChildWindowFromPointEx, and the messages are posted to it (WM_MOUSEMOVE,
+//    then button down and up with client coordinates; WM_MOUSEWHEEL with
+//    screen coordinates). Nothing is posted outside the thumbnail or outside
+//    that window's client area (title bar, borders). The real window is not
+//    activated, so it stays in its tile. Apps that read the real cursor
+//    position or use pointer input instead of mouse messages will not react.
+//  - Left Alt held for 500 ms with the cursor over a tile zooms it: the tile
+//    shows its window at full size around the point under the cursor. The
+//    cursor is then held in place and mouse movement drags the picture under
+//    it. Releasing Alt or dragging the tile (button held) ends the zoom.
+//    Clicks land on the point shown under the cursor.
+void SyncStageProxies();
+// Fits every tile's thumbnail to its window's current size (kTimerStage).
+void RefitStageProxies();
+// Destroys every tile and unregisters the class (engine teardown).
+void DestroyStageProxies();
+
+// =============================================================================
 // Engine (60_engine.cpp)
 // =============================================================================
 
@@ -1015,6 +1293,24 @@ void StopEngine();
 //     (GetAsyncKeyState; covers a key-up that Raw Input never delivered, e.g.
 //     the secure desktop) → CloseWorkspaceOverview(false).
 // kMenuMaskVk (our own injected key) and the 0xFF filler vk are ignored.
+//
+// Alt+Shift mouse resize (60_engine.cpp, same Raw Input keyboard stream):
+//   - The chord is "on" while left Alt and Shift (either) are down and Ctrl
+//     and Win are up (GetAsyncKeyState for Shift/Ctrl/Win). When it turns on
+//     (on the key-down that completes it, in either order) while
+//     settings.mouseResize && !g.paused && !WorkspaceOverviewOpen(): remember
+//     the cursor (GetCursorPos) as the anchor and start kTimerMouseResize.
+//   - kTimerMouseResize: chord no longer on (re-checked with GetAsyncKeyState:
+//     VK_LMENU and VK_SHIFT down, VK_CONTROL/VK_LWIN/VK_RWIN up) → stop: kill
+//     the timer, EndMouseResize(). Otherwise, without a session: once the
+//     cursor is more than 2 * SM_CXDRAG / SM_CYDRAG from the anchor,
+//     BeginMouseResize(anchor); on success SendMenuMaskKey() (no menu bar and
+//     no input-language switch when the keys are released), else stop
+//     polling for this chord. With a session: UpdateMouseResize(cursor).
+//   - Any other key-down (not Alt, Shift, kMenuMaskVk, 0xFF) while polling →
+//     stop as above (e.g. Alt+Shift+1 ends the resize, keeping the ratios).
+//   - Left Alt or Shift released → stop as above.
+//   - The overview never opens while a mouse-resize poll is running.
 
 }  // namespace ht
 
@@ -1126,6 +1422,126 @@ void WalkSplits(const RECT& expanded, int count, const LayoutParams& p,
     slots->push_back(rest);
 }
 
+// Mainstage: the stage's share of the area's width.
+double StageShare(const LayoutParams& p) {
+    if (!p.ratios.empty() && 0.0 < p.ratios[0] && p.ratios[0] < 1.0) {
+        return ClampRatio(p.ratios[0], 0.2, 0.9);
+    }
+    return ClampRatio(p.stageRatio, 0.2, 0.9);
+}
+
+// Mainstage: the stage rect, full height and horizontally centred in `area`.
+RECT StageRect(const RECT& area, const LayoutParams& p) {
+    const LONG areaW = std::max<LONG>(1, area.right - area.left);
+    const LONG width = std::clamp<LONG>(
+        std::lround(static_cast<double>(areaW) * StageShare(p)), 1, areaW);
+    const LONG left = area.left + (areaW - width) / 2;
+    return RECT{left, area.top, left + width, std::max(area.bottom, area.top + 1)};
+}
+
+// Mainstage: the largest rect with aspect ratio aspectW : aspectH inside `box`,
+// centred in it.
+RECT FitAspect(const RECT& box, LONG aspectW, LONG aspectH) {
+    const LONG boxW = std::max<LONG>(1, box.right - box.left);
+    const LONG boxH = std::max<LONG>(1, box.bottom - box.top);
+    LONG w = boxW;
+    LONG h = std::lround(static_cast<double>(w) * aspectH / aspectW);
+    if (h > boxH) {
+        h = boxH;
+        w = std::lround(static_cast<double>(h) * aspectW / aspectH);
+    }
+    w = std::clamp<LONG>(w, 1, boxW);
+    h = std::clamp<LONG>(h, 1, boxH);
+    const LONG left = box.left + (boxW - w) / 2;
+    const LONG top = box.top + (boxH - h) / 2;
+    return RECT{left, top, left + w, top + h};
+}
+
+// Mainstage: the `n` cells of one side strip. The strip is three slots stacked
+// from the top. Up to three windows get a slot each. With more, the first two
+// keep their slots and the rest share the last slot in a grid (2 side by side,
+// then 2x2, 3x2, 3x3, ...). Every cell keeps the stage's aspect ratio
+// (aspectW : aspectH), centred in its slot or grid box.
+std::vector<RECT> SideCells(const RECT& strip, int n, LONG gap, LONG aspectW,
+                            LONG aspectH) {
+    constexpr int kSlots = 3;
+    std::vector<RECT> cells;
+    if (n <= 0) {
+        return cells;
+    }
+    cells.reserve(static_cast<size_t>(n));
+    const LONG stripW = std::max<LONG>(1, strip.right - strip.left);
+    const LONG stripH = std::max<LONG>(1, strip.bottom - strip.top);
+    const LONG slotH = std::max<LONG>(1, (stripH - (kSlots - 1) * gap) / kSlots);
+    const auto slot = [&](int i) {
+        const LONG top = strip.top + i * (slotH + gap);
+        return RECT{strip.left, top, strip.left + stripW, top + slotH};
+    };
+
+    const int single = n <= kSlots ? n : kSlots - 1;
+    for (int i = 0; i < single; ++i) {
+        cells.push_back(FitAspect(slot(i), aspectW, aspectH));
+    }
+    const int rest = n - single;
+    if (rest <= 0) {
+        return cells;
+    }
+    int columns = 1;
+    while (columns * columns < rest) {
+        ++columns;
+    }
+    const int rows = (rest + columns - 1) / columns;
+    const RECT last = slot(kSlots - 1);
+    const LONG boxW = std::max<LONG>(1, (stripW - (columns - 1) * gap) / columns);
+    const LONG boxH = std::max<LONG>(1, (slotH - (rows - 1) * gap) / rows);
+    for (int k = 0; k < rest; ++k) {
+        const LONG left = last.left + (k % columns) * (boxW + gap);
+        const LONG top = last.top + (k / columns) * (boxH + gap);
+        cells.push_back(
+            FitAspect(RECT{left, top, left + boxW, top + boxH}, aspectW, aspectH));
+    }
+    return cells;
+}
+
+// Mainstage: the stage, then the side cells, alternating left and right.
+std::vector<RECT> MainstageLayout(const RECT& area, int count,
+                                  const LayoutParams& p) {
+    std::vector<RECT> out;
+    out.reserve(static_cast<size_t>(count));
+    const RECT stage = StageRect(area, p);
+    out.push_back(stage);
+
+    const LONG gap = std::max(0, p.innerGap);
+    const int sides = count - 1;
+    const LONG stageW = stage.right - stage.left;
+    const LONG stageH = stage.bottom - stage.top;
+    const RECT leftStrip{area.left, area.top,
+                         std::max(area.left + 1, stage.left - gap), area.bottom};
+    const RECT rightStrip{std::min(area.right - 1, stage.right + gap), area.top,
+                          area.right, area.bottom};
+    // Which side each side window is on: p.sides, alternating beyond it.
+    std::vector<bool> onRight(static_cast<size_t>(std::max(0, sides)), false);
+    int rightCount = 0;
+    for (int j = 0; j < sides; ++j) {
+        const size_t k = static_cast<size_t>(j);
+        onRight[k] = k < p.sides.size() ? p.sides[k] != 0 : j % 2 == 1;
+        if (onRight[k]) {
+            ++rightCount;
+        }
+    }
+    const std::vector<RECT> left =
+        SideCells(leftStrip, sides - rightCount, gap, stageW, stageH);
+    const std::vector<RECT> right =
+        SideCells(rightStrip, rightCount, gap, stageW, stageH);
+    size_t nextLeft = 0;
+    size_t nextRight = 0;
+    for (int j = 0; j < sides; ++j) {
+        out.push_back(onRight[static_cast<size_t>(j)] ? right[nextRight++]
+                                                      : left[nextLeft++]);
+    }
+    return out;
+}
+
 // Ranking key of a FindNeighbor candidate; smaller is better.
 struct NeighborKey {
     int overlapRank = 1;  // 0 when the perpendicular extents overlap
@@ -1193,6 +1609,8 @@ constexpr LayoutNameEntry kLayoutNames[] = {
     {L"columns", LayoutKind::Columns},
     {L"rows", LayoutKind::Rows},
     {L"monocle", LayoutKind::Monocle},
+    {L"mainstage", LayoutKind::Mainstage},
+    {L"stage", LayoutKind::Mainstage},
 };
 
 // Case-insensitive comparison of a whole string against a literal.
@@ -1217,6 +1635,9 @@ std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams&
         out.assign(static_cast<size_t>(count), area);
         return out;
     }
+    if (p.kind == LayoutKind::Mainstage) {
+        return MainstageLayout(area, count, p);
+    }
 
     const int gap = std::max(0, p.innerGap);
     const LONG a = gap / 2;
@@ -1233,6 +1654,9 @@ std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams&
 }
 
 double SplitRatio(const LayoutParams& p, int count, int split) {
+    if (p.kind == LayoutKind::Mainstage && split == 0) {
+        return StageShare(p);
+    }
     if (split < 0 || split >= count - 1) {
         return 0.5;
     }
@@ -1258,6 +1682,31 @@ double SplitRatio(const LayoutParams& p, int count, int split) {
 
 bool ApplyResize(const RECT& area, int count, LayoutParams& p, int index,
                  const RECT& newRect) {
+    if (p.kind == LayoutKind::Mainstage) {
+        if (count < 1 || index != 0) {
+            return false;
+        }
+        const RECT stage = StageRect(area, p);
+        const LONG stageW = stage.right - stage.left;
+        const LONG change = (newRect.right - newRect.left) - stageW;
+        if (AbsLong(change) <= 2) {
+            return false;
+        }
+        // The stage stays centred, so both edges move: twice the change puts
+        // the dragged edge where the user left it.
+        const LONG areaW = std::max<LONG>(1, area.right - area.left);
+        const double ratio = ClampRatio(
+            static_cast<double>(stageW + 2 * change) / static_cast<double>(areaW),
+            0.2, 0.9);
+        if (p.ratios.empty()) {
+            p.ratios.resize(1, 0.0);
+        }
+        if (p.ratios[0] == ratio) {
+            return false;
+        }
+        p.ratios[0] = ratio;
+        return true;
+    }
     if (p.kind == LayoutKind::Monocle || count < 2 || index < 0 || index >= count) {
         return false;
     }
@@ -1409,6 +1858,8 @@ const wchar_t* LayoutName(LayoutKind k) {
         return L"rows";
     case LayoutKind::Monocle:
         return L"monocle";
+    case LayoutKind::Mainstage:
+        return L"mainstage";
     case LayoutKind::Count_:
         break;
     }
@@ -1443,6 +1894,7 @@ constexpr DWORD kMaxProcessPathChars = 1024;
 
 #ifndef HT_STANDALONE
 constexpr wchar_t kHiddenKey[] = L"hiddenWindows";
+constexpr wchar_t kAlwaysFloatKey[] = L"alwaysFloatApps";
 #endif
 
 // Shell and system classes that are never managed. Exact, case-sensitive.
@@ -1496,6 +1948,22 @@ std::wstring ProcessNameOf(DWORD pid) {
 
 unsigned long long HwndToNumber(HWND hwnd) {
     return static_cast<unsigned long long>(reinterpret_cast<ULONG_PTR>(hwnd));
+}
+
+// g.alwaysFloatApps as one '|'-joined string, sorted so the stored value and the
+// log line are the same every time. Exe names cannot contain '|'.
+std::wstring JoinAlwaysFloatApps() {
+    std::vector<std::wstring> names(g.alwaysFloatApps.begin(),
+                                    g.alwaysFloatApps.end());
+    std::sort(names.begin(), names.end());
+    std::wstring text;
+    for (const std::wstring& name : names) {
+        if (!text.empty()) {
+            text += L'|';
+        }
+        text += name;
+    }
+    return text;
 }
 
 // One SetWindowPos call. Returns false only for ERROR_ACCESS_DENIED.
@@ -1641,6 +2109,9 @@ Eligibility ClassifyWindow(HWND hwnd, const Settings& settings) {
     if (AnyRuleMatches(settings.ignoreRules, f)) {
         return Eligibility::Ignore;
     }
+    if (!f.processName.empty() && g.alwaysFloatApps.contains(f.processName)) {
+        return Eligibility::Float;
+    }
 
     if (AnyRuleMatches(settings.floatRules, f)) {
         return Eligibility::Float;
@@ -1752,6 +2223,34 @@ void ShowForWorkspace(HWND hwnd) {
     g.hiddenByUs.erase(hwnd);
     ShowWindowAsync(hwnd, SW_SHOWNA);
     PersistHiddenList();
+    g.needsNudge.insert(hwnd);
+    RequestNudge();
+}
+
+void RequestNudge() {
+    if (g.engineHwnd) {
+        SetTimer(g.engineHwnd, kTimerNudge, 300, nullptr);
+    }
+}
+
+void NudgeWindow(HWND hwnd) {
+    if (!IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd) ||
+        IsZoomed(hwnd)) {
+        return;
+    }
+    RECT r{};
+    GetWindowRect(hwnd, &r);
+    const LONG width = r.right - r.left;
+    const LONG height = r.bottom - r.top;
+    if (width <= 1) {
+        return;
+    }
+    constexpr UINT kFlags = SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE |
+                            SWP_ASYNCWINDOWPOS;
+    // One pixel narrower, then the original size: the app gets two real WM_SIZE
+    // messages and repaints at the final size.
+    SetWindowPos(hwnd, nullptr, r.left, r.top, width - 1, height, kFlags);
+    SetWindowPos(hwnd, nullptr, r.left, r.top, width, height, kFlags);
 }
 
 void PersistHiddenList() {
@@ -1810,6 +2309,48 @@ void RestoreLeftoverHiddenWindows() {
     }
     HT_LOG(L"RestoreLeftoverHiddenWindows: showed %d window(s)", shown);
     Wh_DeleteValue(kHiddenKey);
+#endif
+}
+
+void LoadAlwaysFloatApps() {
+    g.alwaysFloatApps.clear();
+#ifndef HT_STANDALONE
+    WCHAR buffer[8192] = {};
+    Wh_GetStringValue(kAlwaysFloatKey, buffer, 8192);
+    const std::wstring text(buffer);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t bar = text.find(L'|', pos);
+        if (bar == std::wstring::npos) {
+            bar = text.size();
+        }
+        const std::wstring token = text.substr(pos, bar - pos);
+        pos = bar + 1;
+
+        const size_t begin = token.find_first_not_of(L" \t\r\n");
+        if (begin == std::wstring::npos) {
+            continue;
+        }
+        const size_t end = token.find_last_not_of(L" \t\r\n");
+        std::wstring name = token.substr(begin, end - begin + 1);
+        for (wchar_t& ch : name) {
+            ch = static_cast<wchar_t>(std::towlower(ch));
+        }
+        g.alwaysFloatApps.insert(name);
+    }
+#endif
+    HT_LOG(L"always-float apps: %d (%s)",
+           static_cast<int>(g.alwaysFloatApps.size()),
+           JoinAlwaysFloatApps().c_str());
+}
+
+void SaveAlwaysFloatApps() {
+#ifndef HT_STANDALONE
+    if (g.alwaysFloatApps.empty()) {
+        Wh_DeleteValue(kAlwaysFloatKey);
+        return;
+    }
+    Wh_SetStringValue(kAlwaysFloatKey, JoinAlwaysFloatApps().c_str());
 #endif
 }
 
@@ -1895,6 +2436,7 @@ struct NoArgCommand {
 constexpr NoArgCommand kNoArgCommands[] = {
     {L"nextlayout", CommandKind::NextLayout},
     {L"togglefloating", CommandKind::ToggleFloating},
+    {L"togglealwaysfloat", CommandKind::ToggleAlwaysFloat},
     {L"togglemonocle", CommandKind::ToggleMonocle},
     {L"fullscreen", CommandKind::Fullscreen},
     {L"swapwithmaster", CommandKind::SwapWithMaster},
@@ -2175,6 +2717,28 @@ void ReadWindhawkSettings(Settings& s) {
 
     s.masterRatio = std::clamp(Wh_GetIntSetting(L"layout.masterRatio"), 15, 85) / 100.0;
     s.ratioStep = std::clamp(Wh_GetIntSetting(L"layout.resizeStep"), 1, 25) / 100.0;
+    const int stageWidth = Wh_GetIntSetting(L"layout.stageWidth");
+    s.stageRatio = std::clamp(stageWidth <= 0 ? 50 : stageWidth, 20, 90) / 100.0;
+
+    // One entry per workspace; blanks in between are allowed, so every index is
+    // read. Trailing "use the default" entries are dropped.
+    s.workspaceLayouts.clear();
+    for (int i = 0; i < 9; ++i) {
+        const std::wstring name =
+            Trim(SettingString(L"layout.workspaceLayouts[%d]", i));
+        LayoutKind kind = LayoutKind::Count_;
+        if (!name.empty() && ToLower(name) != L"default" &&
+            !ParseLayoutName(name.c_str(), &kind)) {
+            HT_LOG(L"Invalid layout '%s' for workspace %d, using the default",
+                   name.c_str(), i + 1);
+            kind = LayoutKind::Count_;
+        }
+        s.workspaceLayouts.push_back(kind);
+    }
+    while (!s.workspaceLayouts.empty() &&
+           s.workspaceLayouts.back() == LayoutKind::Count_) {
+        s.workspaceLayouts.pop_back();
+    }
 
     s.focusBorder = Wh_GetIntSetting(L"border.enabled") != 0;
     const std::wstring colorText = SettingString(L"border.color");
@@ -2199,6 +2763,7 @@ void ReadWindhawkSettings(Settings& s) {
     s.taskbarIndicator = Wh_GetIntSetting(L"indicators.taskbar") != 0;
     s.attentionDots = Wh_GetIntSetting(L"indicators.notificationDots") != 0;
     s.followActivation = Wh_GetIntSetting(L"windows.followActivation") != 0;
+    s.mouseResize = Wh_GetIntSetting(L"windows.mouseResize") != 0;
     s.taskbarIndicatorOffset =
         std::clamp(Wh_GetIntSetting(L"indicators.taskbarOffset"), 0, 2000);
 
@@ -2420,7 +2985,8 @@ void LoadSettings(Settings& s) {
            L"tileMaximized=%d, workspaceOsd=%d, indicatorDuration=%d ms, "
            L"taskbarIndicator=%d, taskbarIndicatorOffset=%d px, "
            L"attentionDots=%d, followActivation=%d, holdOverview=%d, "
-           L"holdDelayMs=%d, debugLog=%d",
+           L"holdDelayMs=%d, mouseResize=%d, debugLog=%d, stageWidth=%d%%, "
+           L"%d workspace layouts",
            s.outerGap, s.innerGap, s.workspaceCount, LayoutName(s.defaultLayout),
            static_cast<int>(s.floatRules.size()),
            static_cast<int>(s.ignoreRules.size()),
@@ -2429,7 +2995,10 @@ void LoadSettings(Settings& s) {
            s.osdDurationMs, static_cast<int>(s.taskbarIndicator),
            s.taskbarIndicatorOffset, static_cast<int>(s.attentionDots),
            static_cast<int>(s.followActivation), static_cast<int>(s.holdOverview),
-           s.holdDelayMs, static_cast<int>(s.debugLog));
+           s.holdDelayMs, static_cast<int>(s.mouseResize),
+           static_cast<int>(s.debugLog),
+           static_cast<int>(s.stageRatio * 100.0 + 0.5),
+           static_cast<int>(s.workspaceLayouts.size()));
 }
 
 }  // namespace ht
@@ -2450,10 +3019,20 @@ int WsCount() {
     return std::clamp(g.settings.workspaceCount, 1, 9);
 }
 
-Workspace MakeWorkspace() {
+// Layout that settings.workspaceLayouts names for workspace `index`, or Count_.
+LayoutKind ConfiguredLayout(const std::vector<LayoutKind>& layouts, int index) {
+    if (index < 0 || index >= static_cast<int>(layouts.size())) {
+        return LayoutKind::Count_;
+    }
+    return layouts[static_cast<size_t>(index)];
+}
+
+// A fresh workspace at position `index` of its monitor.
+Workspace MakeWorkspace(int index) {
+    const LayoutKind own = ConfiguredLayout(g.settings.workspaceLayouts, index);
     Workspace ws;
-    ws.layout = g.settings.defaultLayout;
-    ws.prevLayout = g.settings.defaultLayout;
+    ws.layout = own == LayoutKind::Count_ ? g.settings.defaultLayout : own;
+    ws.prevLayout = ws.layout;
     return ws;
 }
 
@@ -2542,14 +3121,92 @@ RECT LayoutAreaOf(int mon) {
 
 // The layout parameters every geometry computation for `ws` uses.
 LayoutParams LayoutParamsOf(const Workspace& ws) {
-    return LayoutParams{ws.layout, g.settings.masterRatio, g.settings.innerGap,
-                        ws.ratios, ws.flips};
+    LayoutParams p{ws.layout, g.settings.masterRatio, g.settings.innerGap,
+                   ws.ratios, ws.flips, g.settings.stageRatio, {}};
+    if (ws.layout == LayoutKind::Mainstage) {
+        // A window without a side yet (until the next Retile) alternates.
+        const std::vector<HWND> list = LayoutWindowsOf(ws);
+        for (size_t i = 1; i < list.size(); ++i) {
+            const auto side = ws.stageSide.find(list[i]);
+            p.sides.push_back(side != ws.stageSide.end()
+                                  ? side->second
+                                  : static_cast<int>((i - 1) % 2));
+        }
+    }
+    return p;
+}
+
+// Mainstage: drops the sides of windows that left the workspace and gives
+// every side window without one the side with fewer tiles (left on a tie).
+void AssignStageSides(Workspace& ws) {
+    std::erase_if(ws.stageSide, [&ws](const auto& entry) {
+        return IndexOf(ws.tiled, entry.first) < 0;
+    });
+    const std::vector<HWND> list = LayoutWindowsOf(ws);
+    int perSide[2] = {0, 0};
+    for (size_t i = 1; i < list.size(); ++i) {
+        const auto side = ws.stageSide.find(list[i]);
+        if (side != ws.stageSide.end()) ++perSide[side->second != 0 ? 1 : 0];
+    }
+    for (size_t i = 1; i < list.size(); ++i) {
+        if (ws.stageSide.count(list[i]) > 0) continue;
+        const int side = perSide[1] < perSide[0] ? 1 : 0;
+        ws.stageSide[list[i]] = side;
+        ++perSide[side];
+    }
+}
+
+// Frames for directional navigation, one per entry of `hwnds`. Mainstage
+// windows are stacked on the stage, so each is represented by its layout slot
+// (the stage or its side cell) instead of its real frame.
+std::vector<RECT> NavFramesOf(int mon, const Workspace& ws,
+                              const std::vector<HWND>& hwnds) {
+    std::vector<RECT> frames = FramesOf(hwnds);
+    if (ws.layout != LayoutKind::Mainstage) return frames;
+    const std::vector<HWND> list = LayoutWindowsOf(ws);
+    const std::vector<RECT> slots = ComputeLayout(
+        LayoutAreaOf(mon), static_cast<int>(list.size()), LayoutParamsOf(ws));
+    for (size_t i = 0; i < hwnds.size(); ++i) {
+        const int idx = IndexOf(list, hwnds[i]);
+        if (idx >= 0 && idx < static_cast<int>(slots.size())) {
+            frames[i] = slots[idx];
+        }
+    }
+    return frames;
+}
+
+// Mainstage: the layout window on top of the z-order is the one the user sees
+// on the stage, so it takes layout index 0. The window it replaces takes its
+// place in the list (and so its side cell).
+void StageFollowsZOrder(Workspace& ws) {
+    const std::vector<HWND> list = LayoutWindowsOf(ws);
+    if (list.size() < 2) return;
+    // Bounded: the z-order can change while it is walked.
+    int steps = 0;
+    for (HWND h = GetTopWindow(nullptr); h && steps < 4096;
+         h = GetWindow(h, GW_HWNDNEXT), ++steps) {
+        if (IndexOf(list, h) < 0) continue;
+        if (h != list[0]) {
+            std::swap(ws.tiled[IndexOf(ws.tiled, list[0])],
+                      ws.tiled[IndexOf(ws.tiled, h)]);
+            // The window leaving the stage also takes the other's side.
+            const auto side = ws.stageSide.find(h);
+            if (side != ws.stageSide.end()) ws.stageSide[list[0]] = side->second;
+        }
+        return;
+    }
 }
 
 void SetWorkspaceLayout(Workspace& ws, LayoutKind kind) {
     // Remember the layout we leave so togglemonocle can return to it.
     if (kind == LayoutKind::Monocle && ws.layout != LayoutKind::Monocle) {
         ws.prevLayout = ws.layout;
+    }
+    // Mainstage's one ratio is the stage width, unrelated to any split.
+    if (kind != ws.layout && (kind == LayoutKind::Mainstage ||
+                              ws.layout == LayoutKind::Mainstage)) {
+        ws.ratios.clear();
+        ws.flips.clear();
     }
     // Split i means different things in different layouts, so only split 0
     // (the master ratio) carries over. Monocle has no splits; its ratios stay.
@@ -2648,7 +3305,8 @@ void FocusInDirection(HWND cur, const WinLoc& loc, Direction dir) {
     const std::vector<HWND> cands = Candidates(ws, cur, loc.floating);
     const int from = IndexOf(cands, cur);
     if (from >= 0) {
-        const int nb = FindNeighbor(FramesOf(cands), from, dir);
+        const int nb =
+            FindNeighbor(NavFramesOf(loc.mon, ws, cands), from, dir);
         if (nb >= 0) {
             FocusWindow(cands[nb]);
             return;
@@ -2681,8 +3339,14 @@ void MoveInDirection(HWND cur, const WinLoc& loc, Direction dir) {
     } else {
         const std::vector<HWND> cands = Candidates(ws, cur, false);
         const int from = IndexOf(cands, cur);
-        const int nb =
-            from < 0 ? -1 : FindNeighbor(FramesOf(cands), from, dir);
+        const int nb = from < 0 ? -1
+                                : FindNeighbor(NavFramesOf(loc.mon, ws, cands),
+                                               from, dir);
+        if (nb >= 0 && ws.layout == LayoutKind::Mainstage) {
+            // The stage follows focus (OnFocusChanged), which is the swap.
+            FocusWindow(cands[nb]);
+            return;
+        }
         if (nb >= 0) {
             const int a = IndexOf(ws.tiled, cur);
             const int b = IndexOf(ws.tiled, cands[nb]);
@@ -2699,6 +3363,18 @@ void MoveInDirection(HWND cur, const WinLoc& loc, Direction dir) {
     }
 }
 
+// A window that just started floating: 60 % of the work area, centred on it.
+void PlaceCenteredFloating(HWND hwnd, int mon) {
+    const RECT work = g.monitors[mon].rcWork;
+    const LONG areaW = work.right - work.left;
+    const LONG areaH = work.bottom - work.top;
+    const LONG w = areaW * 6 / 10;
+    const LONG h = areaH * 6 / 10;
+    const LONG x = work.left + (areaW - w) / 2;
+    const LONG y = work.top + (areaH - h) / 2;
+    PlaceWindow(hwnd, RECT{x, y, x + w, y + h});
+}
+
 void ToggleFloating(HWND cur, const WinLoc& loc) {
     Workspace& ws = g.monitors[loc.mon].workspaces[loc.ws];
     if (loc.floating) {
@@ -2711,17 +3387,75 @@ void ToggleFloating(HWND cur, const WinLoc& loc) {
     } else {
         RemoveFrom(ws.tiled, cur);
         ws.floating.push_back(cur);
-        const RECT work = g.monitors[loc.mon].rcWork;
-        const LONG areaW = work.right - work.left;
-        const LONG areaH = work.bottom - work.top;
-        const LONG w = areaW * 6 / 10;
-        const LONG h = areaH * 6 / 10;
-        const LONG x = work.left + (areaW - w) / 2;
-        const LONG y = work.top + (areaH - h) / 2;
-        PlaceWindow(cur, RECT{x, y, x + w, y + h});
+        PlaceCenteredFloating(cur, loc.mon);
     }
     Retile(loc.mon);
     UpdateFocusBorder();
+}
+
+// Managed windows of `app` (lowercase exe name) in the tiled or floating lists of
+// every workspace on every monitor.
+std::vector<HWND> ManagedWindowsOfApp(const std::wstring& app, bool floating) {
+    std::vector<HWND> found;
+    for (const Monitor& m : g.monitors) {
+        for (const Workspace& ws : m.workspaces) {
+            for (HWND h : floating ? ws.floating : ws.tiled) {
+                WindowFacts facts;
+                if (GetWindowFacts(h, &facts) && facts.processName == app) {
+                    found.push_back(h);
+                }
+            }
+        }
+    }
+    return found;
+}
+
+// togglealwaysfloat: remember the command target's app as "never tile", or forget
+// it. Remembering moves its tiled windows to floating; forgetting moves its
+// floating windows back to tiled when ClassifyWindow now says Tile.
+void ToggleAlwaysFloatApp(HWND cur, const WinLoc& loc) {
+    WindowFacts facts;
+    if (!GetWindowFacts(cur, &facts) || facts.processName.empty()) {
+        HT_LOG(L"can't tell which app this window belongs to");
+        return;
+    }
+    const std::wstring app = facts.processName;
+    if (!g.alwaysFloatApps.contains(app)) {
+        g.alwaysFloatApps.insert(app);
+        SaveAlwaysFloatApps();
+        HT_LOG(L"never tiling %s again", app.c_str());
+        // Collected first: moving entries would change the lists being searched.
+        for (HWND h : ManagedWindowsOfApp(app, false)) {
+            WinLoc hl;
+            if (!Locate(h, &hl)) continue;
+            Workspace& ws = g.monitors[hl.mon].workspaces[hl.ws];
+            RemoveFrom(ws.tiled, h);
+            ws.floating.push_back(h);
+        }
+        // Only a window that just left the layout is centred; one the user had
+        // already floated stays where they put it.
+        if (!loc.floating) PlaceCenteredFloating(cur, loc.mon);
+    } else {
+        g.alwaysFloatApps.erase(app);
+        SaveAlwaysFloatApps();
+        HT_LOG(L"tiling %s again", app.c_str());
+        for (HWND h : ManagedWindowsOfApp(app, true)) {
+            WinLoc hl;
+            if (!Locate(h, &hl) || ClassifyWindow(h, g.settings) != Eligibility::Tile) {
+                continue;
+            }
+            Workspace& ws = g.monitors[hl.mon].workspaces[hl.ws];
+            RemoveFrom(ws.floating, h);
+            ws.tiled.push_back(h);
+            if (g.settings.tileMaximized && IsZoomed(h)) {
+                ShowWindowAsync(h, SW_RESTORE);
+                HT_LOG(L"window %p was maximized; restoring it for tiling", (void*)h);
+            }
+        }
+    }
+    RetileAll();
+    UpdateFocusBorder();
+    RequestBarUpdate();
 }
 
 struct FoundMonitor {
@@ -2745,6 +3479,51 @@ BOOL CALLBACK CollectWindow(HWND hwnd, LPARAM lparam) {
     return TRUE;
 }
 
+// Alt+Shift mouse resize session (see BeginMouseResize in the contract).
+struct MouseResizeSession {
+    bool active = false;
+    HWND hwnd = nullptr;
+    int mon = -1;
+    int ws = -1;
+    bool floating = false;     // floating windows move live, tiled ones snap
+    int index = -1;            // tiled only: index in LayoutWindowsOf(ws)
+    int count = 0;             // tiled only: size of that list at start
+    RECT area{};               // tiled only: layout area at start
+    std::vector<double> startRatios;  // tiled only
+    RECT startRect{};          // tiled: its slot; floating: visible frame
+    RECT lastRect{};           // last rect handed to PlaceWindow
+    POINT startCursor{};
+    bool leftEdge = false;     // true: left edge moves, false: right edge
+    bool topEdge = false;      // true: top edge moves, false: bottom edge
+    int lastDx = 0;            // last cursor delta handled
+    int lastDy = 0;
+};
+
+MouseResizeSession gResize;
+
+// True while the session's window is still where it was recorded: same
+// monitor, workspace and tiled/floating state, workspace active, not minimized
+// or maximized. Tiled: also not monocle and same index and count in
+// LayoutWindowsOf(ws).
+bool MouseResizeStillValid() {
+    const MouseResizeSession& s = gResize;
+    if (!s.active || s.mon < 0 || s.mon >= MonitorCount()) return false;
+    if (IsIconic(s.hwnd) || IsZoomed(s.hwnd)) return false;
+    WinLoc loc;
+    if (!Locate(s.hwnd, &loc) || loc.mon != s.mon || loc.ws != s.ws ||
+        loc.floating != s.floating) {
+        return false;
+    }
+    const Monitor& m = g.monitors[s.mon];
+    if (m.active != s.ws) return false;
+    if (s.floating) return true;
+    const Workspace& ws = m.workspaces[s.ws];
+    if (ws.layout == LayoutKind::Monocle) return false;
+    const std::vector<HWND> list = LayoutWindowsOf(ws);
+    return static_cast<int>(list.size()) == s.count &&
+           IndexOf(list, s.hwnd) == s.index;
+}
+
 }  // namespace
 
 Workspace& ActiveWorkspace(int mon) {
@@ -2754,7 +3533,7 @@ Workspace& ActiveWorkspace(int mon) {
         return fallback;
     }
     Monitor& m = g.monitors[mon];
-    if (m.workspaces.empty()) m.workspaces.push_back(MakeWorkspace());
+    if (m.workspaces.empty()) m.workspaces.push_back(MakeWorkspace(0));
     const int last = static_cast<int>(m.workspaces.size()) - 1;
     m.active = std::clamp(m.active, 0, last);
     return m.workspaces[m.active];
@@ -2832,6 +3611,7 @@ void UnmanageWindow(HWND hwnd) {
         }
     }
     g.zoomed.erase(hwnd);
+    if (gResize.active && gResize.hwnd == hwnd) gResize = MouseResizeSession{};
     g.pendingVisibility.erase(hwnd);
     g.attention.erase(hwnd);
     if (g.borderedHwnd == hwnd) {
@@ -2885,12 +3665,14 @@ void RefreshMonitors() {
         if (oldFor[f] >= 0) {
             m = std::move(old[oldFor[f]]);
         } else {
-            m.workspaces.assign(WsCount(), MakeWorkspace());
+            for (int wi = 0; wi < WsCount(); ++wi) {
+                m.workspaces.push_back(MakeWorkspace(wi));
+            }
         }
         m.handle = found[f].handle;
         m.rcMonitor = found[f].rcMonitor;
         m.rcWork = found[f].rcWork;
-        if (m.workspaces.empty()) m.workspaces.push_back(MakeWorkspace());
+        if (m.workspaces.empty()) m.workspaces.push_back(MakeWorkspace(0));
         const int last = static_cast<int>(m.workspaces.size()) - 1;
         m.active = std::clamp(m.active, 0, last);
         g.monitors.push_back(std::move(m));
@@ -2922,7 +3704,8 @@ void ApplySettingsChange() {
     for (int mi = 0; mi < MonitorCount(); ++mi) {
         Monitor& m = g.monitors[mi];
         while (static_cast<int>(m.workspaces.size()) < count) {
-            m.workspaces.push_back(MakeWorkspace());
+            m.workspaces.push_back(
+                MakeWorkspace(static_cast<int>(m.workspaces.size())));
         }
         if (static_cast<int>(m.workspaces.size()) > count) {
             Workspace& last = m.workspaces[count - 1];
@@ -2937,17 +3720,36 @@ void ApplySettingsChange() {
             m.workspaces.resize(static_cast<size_t>(count));
         }
         m.active = std::clamp(m.active, 0, count - 1);
+        // Only a workspace whose own entry changed switches layout, so a layout
+        // picked with the keyboard survives unrelated settings changes.
+        for (int wi = 0; wi < count; ++wi) {
+            const LayoutKind now =
+                ConfiguredLayout(g.settings.workspaceLayouts, wi);
+            if (now != LayoutKind::Count_ &&
+                now != ConfiguredLayout(g.appliedWorkspaceLayouts, wi)) {
+                SetWorkspaceLayout(m.workspaces[wi], now);
+            }
+        }
         // Covers a removed active workspace and windows moved into it.
         ShowHiddenIn(m.workspaces[m.active]);
     }
+    g.appliedWorkspaceLayouts = g.settings.workspaceLayouts;
     RetileAll();
     UpdateFocusBorder();
     RequestBarUpdate();
 }
 
-void Retile(int mon) {
+namespace {
+
+// Retile without the side-tile sync, so RetileAll syncs once.
+void RetileWindows(int mon) {
     if (g.paused || mon < 0 || mon >= MonitorCount()) return;
     Workspace& ws = ActiveWorkspace(mon);
+    const bool stacked = ws.layout == LayoutKind::Mainstage;
+    if (stacked) {
+        StageFollowsZOrder(ws);
+        AssignStageSides(ws);
+    }
     const std::vector<HWND> visible = LayoutWindowsOf(ws);
     if (visible.empty()) return;
 
@@ -2956,7 +3758,13 @@ void Retile(int mon) {
                       LayoutParamsOf(ws));
     std::vector<HWND> failed;
     for (size_t i = 0; i < visible.size() && i < rects.size(); ++i) {
-        if (!PlaceWindow(visible[i], rects[i])) failed.push_back(visible[i]);
+        // Mainstage windows all sit on the stage; rects 1.. are their tiles.
+        RECT target = rects[stacked ? 0 : i];
+        // A side window reaches out from under the stage window by a sliver:
+        // apps that stop drawing while fully covered (Chromium, Electron)
+        // would otherwise freeze their tile's picture.
+        if (stacked && i > 0) target.left -= kStageSliver;
+        if (!PlaceWindow(visible[i], target)) failed.push_back(visible[i]);
     }
     for (HWND h : failed) {
         RemoveFrom(ws.tiled, h);
@@ -2966,8 +3774,77 @@ void Retile(int mon) {
     if (!failed.empty()) RequestRetile();
 }
 
+}  // namespace
+
+void Retile(int mon) {
+    RetileWindows(mon);
+    SyncStageProxies();
+}
+
 void RetileAll() {
-    for (int i = 0; i < MonitorCount(); ++i) Retile(i);
+    for (int i = 0; i < MonitorCount(); ++i) RetileWindows(i);
+    SyncStageProxies();
+}
+
+std::vector<StageTile> StageSideTiles() {
+    std::vector<StageTile> tiles;
+    if (g.paused) return tiles;
+    for (int mi = 0; mi < MonitorCount(); ++mi) {
+        const Workspace& ws = ActiveWorkspace(mi);
+        if (ws.layout != LayoutKind::Mainstage) continue;
+        const std::vector<HWND> list = LayoutWindowsOf(ws);
+        const std::vector<RECT> rects = ComputeLayout(
+            LayoutAreaOf(mi), static_cast<int>(list.size()), LayoutParamsOf(ws));
+        for (size_t i = 1; i < list.size() && i < rects.size(); ++i) {
+            tiles.push_back(StageTile{list[i], rects[i]});
+        }
+    }
+    return tiles;
+}
+
+void StageDropWindow(HWND hwnd, POINT pt) {
+    WinLoc loc;
+    if (!Locate(hwnd, &loc) || loc.floating) return;
+    ActiveWorkspace(loc.mon);  // also normalises m.active
+    Monitor& m = g.monitors[loc.mon];
+    if (loc.ws != m.active) return;
+    Workspace& ws = m.workspaces[loc.ws];
+    if (ws.layout != LayoutKind::Mainstage) return;
+
+    const std::vector<HWND> list = LayoutWindowsOf(ws);
+    const int count = static_cast<int>(list.size());
+    const int from = IndexOf(list, hwnd);
+    if (from < 0) return;
+    const std::vector<RECT> slots =
+        ComputeLayout(LayoutAreaOf(loc.mon), count, LayoutParamsOf(ws));
+    int over = -1;
+    for (int i = 0; i < count && i < static_cast<int>(slots.size()); ++i) {
+        if (PtInRect(&slots[i], pt)) {
+            over = i;
+            break;
+        }
+    }
+
+    if (over == from) {
+        // Dropped where it came from.
+    } else if (over == 0) {
+        FocusWindow(hwnd);  // a side window dropped on the stage
+    } else if (over > 0 && from == 0) {
+        FocusWindow(list[over]);  // the stage window dropped on a tile
+    } else if (over > 0) {
+        const HWND other = list[over];
+        std::swap(ws.tiled[IndexOf(ws.tiled, hwnd)],
+                  ws.tiled[IndexOf(ws.tiled, other)]);
+        std::swap(ws.stageSide[hwnd], ws.stageSide[other]);
+    } else if (count >= 2 && PtInRect(&m.rcWork, pt) &&
+               (pt.x < slots[0].left || pt.x >= slots[0].right)) {
+        // Free space beside the stage: last tile of that side.
+        ws.stageSide[hwnd] = pt.x < slots[0].left ? 0 : 1;
+        RemoveFrom(ws.tiled, hwnd);
+        ws.tiled.push_back(hwnd);
+        if (from == 0) FocusWindow(list[1]);  // the next window takes the stage
+    }
+    Retile(loc.mon);
 }
 
 void RequestRetile() {
@@ -3091,6 +3968,12 @@ void OnFocusChanged(HWND hwnd) {
         g.focusedMon = loc.mon;
         g.monitors[loc.mon].workspaces[loc.ws].lastFocus = managed;
         if (g.attention.erase(managed) > 0) RequestBarUpdate();
+        // The focused window takes the stage (Retile reads the z-order).
+        if (!loc.floating && loc.ws == g.monitors[loc.mon].active &&
+            g.monitors[loc.mon].workspaces[loc.ws].layout ==
+                LayoutKind::Mainstage) {
+            Retile(loc.mon);
+        }
     }
     UpdateFocusBorder();
 }
@@ -3157,7 +4040,15 @@ void UpdateFocusBorder() {
 
 void OnUserDragEnd(HWND hwnd) {
     WinLoc loc;
-    if (Locate(hwnd, &loc)) {
+    POINT dropPoint{};
+    GetCursorPos(&dropPoint);
+    int dropMon = -1;
+    int dropWs = -1;
+    if (Locate(hwnd, &loc) && OverviewDropTarget(dropPoint, &dropMon, &dropWs)) {
+        // Dropped on a workspace of the overview (Alt held while dragging).
+        MoveWindowToWorkspace(hwnd, dropMon, dropWs);
+        OverviewDropDone();
+    } else if (Locate(hwnd, &loc)) {
         const RECT frame = GetVisibleFrame(hwnd);
         const POINT center{(frame.left + frame.right) / 2,
                            (frame.top + frame.bottom) / 2};
@@ -3212,6 +4103,11 @@ void OnUserDragEnd(HWND hwnd) {
                         ws.ratios = after.ratios;
                         HT_LOG(L"resized window %p", (void*)hwnd);
                     }
+                } else if (ws.layout == LayoutKind::Mainstage) {
+                    // Moved: the mouse decides (a tile, a side, or back).
+                    POINT cursor{};
+                    GetCursorPos(&cursor);
+                    StageDropWindow(hwnd, cursor);
                 } else {
                     // Moved: swap with the tiled window under the drop point.
                     const int self = IndexOf(ws.tiled, hwnd);
@@ -3231,6 +4127,123 @@ void OnUserDragEnd(HWND hwnd) {
     RequestRetile();
 }
 
+bool BeginMouseResize(POINT cursor) {
+    EndMouseResize();
+    const HWND hwnd = CommandTarget();
+    WinLoc loc;
+    if (!Locate(hwnd, &loc)) return false;
+    if (IsIconic(hwnd) || IsZoomed(hwnd)) return false;
+    ActiveWorkspace(loc.mon);  // also normalises m.active
+    const Monitor& m = g.monitors[loc.mon];
+    if (m.active != loc.ws) return false;
+    const Workspace& ws = m.workspaces[loc.ws];
+
+    MouseResizeSession s;
+    s.active = true;
+    s.hwnd = hwnd;
+    s.mon = loc.mon;
+    s.ws = loc.ws;
+    s.floating = loc.floating;
+    if (loc.floating) {
+        s.startRect = GetVisibleFrame(hwnd);
+    } else {
+        if (ws.layout == LayoutKind::Monocle) return false;
+        const std::vector<HWND> list = LayoutWindowsOf(ws);
+        const int count = static_cast<int>(list.size());
+        const int index = IndexOf(list, hwnd);
+        if (index < 0 || count < 2) return false;
+        s.area = LayoutAreaOf(loc.mon);
+        const std::vector<RECT> slots =
+            ComputeLayout(s.area, count, LayoutParamsOf(ws));
+        if (index >= static_cast<int>(slots.size())) return false;
+        s.index = index;
+        s.count = count;
+        s.startRatios = ws.ratios;
+        s.startRect = slots[index];
+    }
+    s.lastRect = s.startRect;
+    s.startCursor = cursor;
+    // Edges by where the cursor was relative to the window's center.
+    const RECT& r = s.startRect;
+    s.leftEdge = cursor.x < (r.left + r.right) / 2;
+    s.topEdge = cursor.y < (r.top + r.bottom) / 2;
+    gResize = s;
+    return true;
+}
+
+void UpdateMouseResize(POINT cursor) {
+    if (!gResize.active) return;
+    if (!MouseResizeStillValid()) {
+        // Moved, minimized or unmanaged since the start: stop without applying.
+        gResize = MouseResizeSession{};
+        return;
+    }
+    MouseResizeSession& s = gResize;
+    const int dx = static_cast<int>(cursor.x - s.startCursor.x);
+    const int dy = static_cast<int>(cursor.y - s.startCursor.y);
+    if (dx == s.lastDx && dy == s.lastDy) return;
+    s.lastDx = dx;
+    s.lastDy = dy;
+
+    // Each moving edge stays at least this far from its opposite edge.
+    constexpr LONG kMinEdgeDistance = 50;
+    const RECT work = g.monitors[s.mon].rcWork;
+    RECT target = s.startRect;
+    if (s.leftEdge) {
+        target.left += dx;
+        if (s.floating) target.left = std::max(target.left, work.left);
+        target.left = std::min(target.left, target.right - kMinEdgeDistance);
+    } else {
+        target.right += dx;
+        if (s.floating) target.right = std::min(target.right, work.right);
+        target.right = std::max(target.right, target.left + kMinEdgeDistance);
+    }
+    if (s.topEdge) {
+        target.top += dy;
+        if (s.floating) target.top = std::max(target.top, work.top);
+        target.top = std::min(target.top, target.bottom - kMinEdgeDistance);
+    } else {
+        target.bottom += dy;
+        if (s.floating) target.bottom = std::min(target.bottom, work.bottom);
+        target.bottom = std::max(target.bottom, target.top + kMinEdgeDistance);
+    }
+
+    // Only the active window moves while the keys are held; a tiled window
+    // gets its layout once, in EndMouseResize.
+    PlaceWindow(s.hwnd, target);
+    s.lastRect = target;
+}
+
+void EndMouseResize() {
+    if (!gResize.active) return;
+    const MouseResizeSession s = gResize;
+    const bool valid = MouseResizeStillValid();
+    gResize = MouseResizeSession{};
+    bool changed = false;
+    if (valid && !EqualRect(&s.lastRect, &s.startRect)) {
+        if (s.floating) {
+            changed = true;
+        } else {
+            // Neighbours make room for the new edges; ratios from the start.
+            Workspace& ws = g.monitors[s.mon].workspaces[s.ws];
+            LayoutParams params = LayoutParamsOf(ws);
+            params.ratios = s.startRatios;
+            if (ApplyResize(s.area, s.count, params, s.index, s.lastRect)) {
+                ws.ratios = params.ratios;
+                changed = true;
+            }
+        }
+    }
+    if (!s.floating) Retile(s.mon);
+    if (changed) {
+        HT_LOG(L"mouse-resized window %p", static_cast<void*>(s.hwnd));
+    }
+}
+
+bool MouseResizeActive() {
+    return gResize.active;
+}
+
 void ExecuteCommand(const Command& cmd) {
     if (g.paused && cmd.kind != CommandKind::ToggleTiling &&
         cmd.kind != CommandKind::Rescan) {
@@ -3246,7 +4259,8 @@ void ExecuteCommand(const Command& cmd) {
     if (cmd.kind == CommandKind::ToggleTiling) {
         g.paused = !g.paused;
         HT_LOG(L"%s", g.paused ? L"paused" : L"resumed");
-        if (!g.paused) RetileAll();
+        // While paused this only takes the Mainstage side tiles away.
+        RetileAll();
         return;
     }
     if (MonitorCount() == 0 || cmd.kind == CommandKind::None) return;
@@ -3313,6 +4327,9 @@ void ExecuteCommand(const Command& cmd) {
         case CommandKind::ToggleFloating:
             if (has) ToggleFloating(cur, loc);
             break;
+        case CommandKind::ToggleAlwaysFloat:
+            if (has) ToggleAlwaysFloatApp(cur, loc);
+            break;
         case CommandKind::ToggleMonocle:
             if (ws.layout == LayoutKind::Monocle) {
                 ws.layout = ws.prevLayout == LayoutKind::Monocle
@@ -3326,7 +4343,11 @@ void ExecuteCommand(const Command& cmd) {
             if (has) FocusWindow(cur);
             break;
         case CommandKind::SwapWithMaster:
-            if (has && !loc.floating && ws.tiled.size() > 1) {
+            if (has && !loc.floating && ws.layout == LayoutKind::Mainstage) {
+                // The stage follows focus: focusing the first side window swaps.
+                const std::vector<HWND> list = LayoutWindowsOf(ws);
+                if (list.size() > 1) FocusWindow(list[cur == list[0] ? 1 : 0]);
+            } else if (has && !loc.floating && ws.tiled.size() > 1) {
                 const int i = IndexOf(ws.tiled, cur);
                 if (i == 0) {
                     std::swap(ws.tiled[0], ws.tiled[1]);
@@ -3367,7 +4388,17 @@ void ExecuteCommand(const Command& cmd) {
             }
             break;
         case CommandKind::ResizeActive:
-            if (has && !loc.floating && ws.layout != LayoutKind::Monocle) {
+            if (ws.layout == LayoutKind::Mainstage) {
+                // One size to change: right and up widen the stage, left and
+                // down narrow it.
+                const bool widen =
+                    cmd.dir == Direction::Right || cmd.dir == Direction::Up;
+                const double now = SplitRatio(LayoutParamsOf(ws), 1, 0);
+                const double step = g.settings.ratioStep;
+                if (ws.ratios.empty()) ws.ratios.resize(1, 0.0);
+                ws.ratios[0] = std::clamp(now + (widen ? step : -step), 0.2, 0.9);
+                Retile(mon);
+            } else if (has && !loc.floating && ws.layout != LayoutKind::Monocle) {
                 const std::vector<HWND> list = LayoutWindowsOf(ws);
                 const int idx = IndexOf(list, cur);
                 const int n = static_cast<int>(list.size());
@@ -3484,10 +4515,9 @@ constexpr int kOsdDotDip = 10;           // notification dot diameter
 constexpr int kOsdDotRingDip = 3;        // ring: 2 * 1.5 dip wider than the dot
 constexpr double kOsdDotDiagonal = 0.7071;  // cos and sin of 45 degrees
 constexpr int kOsdDragIconDip = 20;         // app icon while it is dragged
-constexpr int kOsdHighlightCornerDip = 8;   // corner radius: drop target, icon hover
+constexpr int kOsdHighlightCornerDip = 8;   // corner radius: drop target, column hover
 constexpr int kOsdCellCornerDip = 4;        // corner radius: empty slot of a dragged icon
-constexpr int kOsdHoverGrowDip = 3;         // badge hover: the disc grows this far past the badge
-constexpr int kOsdBadgeItem = -1;           // hit test, hover, press: the column's badge
+constexpr int kOsdBadgeItem = -1;           // hit test, press: the column's badge
 constexpr int kOsdNoItem = -2;              // hit test, hover, press: no badge or icon there
 constexpr int kOsdMaxCount = 9;
 constexpr int kOsdDefaultDurationMs = 700;
@@ -3553,9 +4583,8 @@ struct OsdState {
     bool dragging = false;
     POINT cursor{};    // last mouse position, client pixels
     int dropCol = -1;  // column the dragged icon would land in; -1 = none
-    // Hover: the badge or icon under the mouse while nothing is pressed.
+    // Hover: the column under the mouse while nothing is pressed; -1 = none.
     int hoverCol = -1;
-    int hoverItem = kOsdNoItem;
     bool trackingLeave = false;  // TME_LEAVE is armed
 };
 
@@ -3872,6 +4901,33 @@ void OsdInvalidate() {
     if (osd.hwnd) InvalidateRect(osd.hwnd, nullptr, FALSE);
 }
 
+// The rounded rectangle over the whole zone of column `col`, shared by the drop
+// target and the hover. Normally a tint `tint` of the way from the background to
+// the active fill; in high contrast (no tint to blend) a `frame`-px outline.
+void OsdPaintColumnZone(HDC dc, size_t col, const RECT& client, const OsdMetrics& m,
+                        double tint, int frame) {
+    int left = 0;
+    int right = 0;
+    OsdZoneBounds(col, client.right, m, left, right);
+    const RECT zone{left + 1, m.pad / 2, right - 1, client.bottom - m.pad / 2};
+    const int corner = OsdScale(kOsdHighlightCornerDip);
+    if (osd.theme.highContrast) {
+        HPEN pen = CreatePen(PS_SOLID, frame, osd.theme.activeFill);
+        HGDIOBJ oldPen = SelectObject(dc, pen);
+        HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+        OsdRoundRect(dc, zone, corner);
+        SelectObject(dc, oldBrush);
+        SelectObject(dc, oldPen);
+        DeleteObject(pen);
+    } else {
+        HBRUSH brush = CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.activeFill, tint));
+        HGDIOBJ oldBrush = SelectObject(dc, brush);
+        OsdRoundRect(dc, zone, corner);
+        SelectObject(dc, oldBrush);
+        DeleteObject(brush);
+    }
+}
+
 // Draws into an off-screen bitmap and copies it once, so the layered window
 // never shows a half-drawn state.
 void OsdPaint(HWND hwnd, HDC target) {
@@ -3911,62 +4967,14 @@ void OsdPaint(HWND hwnd, HDC target) {
     }
 
     // Drop target: the whole zone of the column the dragged icon would land in.
+    // Drop target: the whole zone of the column the dragged icon would land in.
     if (dragged && osd.dropCol >= 0 && osd.dropCol < ncols) {
-        int left = 0;
-        int right = 0;
-        OsdZoneBounds(static_cast<size_t>(osd.dropCol), client.right, m, left, right);
-        const RECT drop{left + 1, m.pad / 2, right - 1, h - m.pad / 2};
-        const int corner = OsdScale(kOsdHighlightCornerDip);
-        if (osd.theme.highContrast) {
-            // No tint in high contrast: a 2-px frame instead.
-            HPEN frame = CreatePen(PS_SOLID, 2, osd.theme.activeFill);
-            HGDIOBJ oldFramePen = SelectObject(mem, frame);
-            HGDIOBJ oldBrush = SelectObject(mem, GetStockObject(NULL_BRUSH));
-            OsdRoundRect(mem, drop, corner);
-            SelectObject(mem, oldBrush);
-            SelectObject(mem, oldFramePen);
-            DeleteObject(frame);
-        } else {
-            HBRUSH tint =
-                CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.activeFill, 0.30));
-            HGDIOBJ oldBrush = SelectObject(mem, tint);
-            OsdRoundRect(mem, drop, corner);
-            SelectObject(mem, oldBrush);
-            DeleteObject(tint);
-        }
+        OsdPaintColumnZone(mem, static_cast<size_t>(osd.dropCol), client, m, 0.30, 2);
     }
 
-    // Hover: a highlight behind the badge or icon under the mouse. Never while pressed.
+    // Hover: the whole zone of the column under the mouse. Never while pressed.
     if (osd.interactive && !OsdPressed() && osd.hoverCol >= 0 && osd.hoverCol < ncols) {
-        const OsdColumn& col = osd.columns[static_cast<size_t>(osd.hoverCol)];
-        // High contrast has no tint to blend (occupiedFill == background): an
-        // outline in the highlight color instead.
-        HBRUSH hover =
-            osd.theme.highContrast
-                ? nullptr
-                : CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.occupiedFill, 0.5));
-        HPEN hoverPen =
-            osd.theme.highContrast ? CreatePen(PS_SOLID, 1, osd.theme.activeFill) : nullptr;
-        HGDIOBJ oldBrush =
-            SelectObject(mem, hover ? static_cast<HGDIOBJ>(hover) : GetStockObject(NULL_BRUSH));
-        HGDIOBJ oldHoverPen = hoverPen ? SelectObject(mem, hoverPen) : nullptr;
-        if (osd.hoverItem == kOsdBadgeItem) {
-            // The badge circle grown a little: a disc behind it.
-            const int grow = OsdScale(kOsdHoverGrowDip);
-            const int badgeLeft = col.left + (col.width - m.badge) / 2;
-            const RECT disc{badgeLeft - grow, m.pad - grow, badgeLeft + m.badge + grow,
-                            m.pad + m.badge + grow};
-            OsdRoundRect(mem, disc, (disc.bottom - disc.top) / 2);
-        } else if (osd.hoverItem >= 0 && osd.hoverItem < static_cast<int>(col.icons.size())) {
-            // The icon's row band, as wide as the column.
-            const RECT band{col.left, m.bandTop(osd.hoverItem), col.left + col.width,
-                            m.bandBottom(osd.hoverItem)};
-            OsdRoundRect(mem, band, OsdScale(kOsdHighlightCornerDip));
-        }
-        if (oldHoverPen) SelectObject(mem, oldHoverPen);
-        SelectObject(mem, oldBrush);
-        if (hoverPen) DeleteObject(hoverPen);
-        if (hover) DeleteObject(hover);
+        OsdPaintColumnZone(mem, static_cast<size_t>(osd.hoverCol), client, m, 0.15, 1);
     }
 
     for (size_t i = 0; i < osd.columns.size(); ++i) {
@@ -4092,8 +5100,11 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 GetCursorPos(&pt);
                 ScreenToClient(hwnd, &pt);
                 const OsdHit hit = OsdHitTest(pt);
-                const bool onTarget = hit.col >= 0 && hit.item != kOsdNoItem;
-                SetCursor(LoadCursorW(nullptr, onTarget ? IDC_HAND : IDC_ARROW));
+                // The whole panel is a target; a drag keeps its move cursor.
+                const bool moving = osd.dragging;
+                SetCursor(LoadCursorW(nullptr, moving ? IDC_SIZEALL
+                                              : hit.col >= 0 ? IDC_HAND
+                                                             : IDC_ARROW));
                 return TRUE;
             }
             break;
@@ -4101,13 +5112,19 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (!osd.interactive) return 0;
             const POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             const OsdHit hit = OsdHitTest(pt);
-            if (hit.col < 0 || hit.item == kOsdNoItem) return 0;
+            if (hit.col < 0) return 0;
             osd.pressCol = hit.col;
-            osd.pressItem = hit.item;
+            // Anywhere in the column but on an icon counts as the badge.
+            osd.pressItem = hit.item == kOsdNoItem ? kOsdBadgeItem : hit.item;
             osd.pressPt = pt;
             osd.cursor = pt;
             osd.dragging = false;
             osd.dropCol = -1;
+            // The press is the action now, so the hover goes.
+            if (osd.hoverCol >= 0) {
+                osd.hoverCol = -1;
+                OsdInvalidate();
+            }
             SetCapture(hwnd);
             return 0;
         }
@@ -4141,13 +5158,10 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 tme.hwndTrack = hwnd;
                 osd.trackingLeave = TrackMouseEvent(&tme) != FALSE;
             }
-            const OsdHit hit = OsdHitTest(pt);
-            const bool onTarget = hit.col >= 0 && hit.item != kOsdNoItem;
-            const int hoverCol = onTarget ? hit.col : -1;
-            const int hoverItem = onTarget ? hit.item : kOsdNoItem;
-            if (hoverCol != osd.hoverCol || hoverItem != osd.hoverItem) {
+            // The column under the mouse, -1 outside the panel.
+            const int hoverCol = OsdHitTest(pt).col;
+            if (hoverCol != osd.hoverCol) {
                 osd.hoverCol = hoverCol;
-                osd.hoverItem = hoverItem;
                 OsdInvalidate();
             }
             return 0;
@@ -4156,7 +5170,6 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             osd.trackingLeave = false;
             if (osd.hoverCol >= 0) {
                 osd.hoverCol = -1;
-                osd.hoverItem = kOsdNoItem;
                 OsdInvalidate();
             }
             return 0;
@@ -4195,7 +5208,9 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     HT_LOG(L"overview: moved %d window(s) from workspace %d to %d",
                            moved, pressCol + 1, dropCol + 1);
                 }
-            } else if (hit.col == pressCol && hit.item == pressItem) {
+            } else if (hit.col == pressCol &&
+                       (hit.item == kOsdNoItem ? kOsdBadgeItem : hit.item) == pressItem) {
+                // Same mapping as the press: anywhere in the column but on an icon is the badge.
                 if (pressItem == kOsdBadgeItem) {
                     SwitchWorkspace(mon, pressCol);
                 } else {
@@ -4224,7 +5239,6 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     CloseWorkspaceOverview(true);
                 } else {
                     osd.hoverCol = -1;
-                    osd.hoverItem = kOsdNoItem;
                     OsdInvalidate();
                 }
             }
@@ -4321,9 +5335,8 @@ void OsdSetInteractive(bool on) {
 bool OsdRender(int mon) {
     if (mon < 0 || mon >= static_cast<int>(g.monitors.size())) return false;
     if (!OsdEnsureWindow()) return false;
+    // A hover survives the re-render; it is re-hit-tested below, once the layout is known.
     osd.mon = mon;
-    osd.hoverCol = -1;
-    osd.hoverItem = kOsdNoItem;
 
     const Monitor& m = g.monitors[mon];
     const int avail = static_cast<int>(m.workspaces.size());
@@ -4389,6 +5402,14 @@ bool OsdRender(int mon) {
     const int y0 = static_cast<int>(m.rcWork.top) + (areaH - height) / 2;
     SetWindowPos(osd.hwnd, HWND_TOPMOST, x0, y0, width, height,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // Hover follows the cursor, not the old layout: only real mouse movement sets it,
+    // so a panel that opens under a resting cursor has none.
+    if (osd.hoverCol >= 0) {
+        POINT pt{};
+        GetCursorPos(&pt);
+        ScreenToClient(osd.hwnd, &pt);
+        osd.hoverCol = OsdHitTest(pt).col;
+    }
     InvalidateRect(osd.hwnd, nullptr, FALSE);
     UpdateWindow(osd.hwnd);
     return true;
@@ -4532,9 +5553,18 @@ void CloseWorkspaceOverview(bool cancelDrag) {
         return;
     }
 
+    // Released over a column (no press here, so the hover is current): switch to
+    // it once the panel is hidden.
+    // Over the active workspace there is nothing to do (and SwitchWorkspace would
+    // flash the timed popup).
+    const bool switchTo = !cancelDrag && osd.hoverCol >= 0 && osd.mon >= 0 &&
+                          osd.mon < static_cast<int>(g.monitors.size()) &&
+                          osd.hoverCol != g.monitors[osd.mon].active;
+    const int target = osd.hoverCol;
+    const int mon = osd.mon;
+
     OsdAbandonPress();
     osd.hoverCol = -1;
-    osd.hoverItem = kOsdNoItem;
     osd.trackingLeave = false;
     osd.interactive = false;
     osd.closeAfterPress = false;
@@ -4543,10 +5573,36 @@ void CloseWorkspaceOverview(bool cancelDrag) {
         KillTimer(osd.hwnd, kOsdHideTimer);
         ShowWindow(osd.hwnd, SW_HIDE);
     }
+    if (switchTo) {
+        HT_LOG(L"overview: released over workspace %d", target + 1);
+        SwitchWorkspace(mon, target);
+    }
 }
 
 bool WorkspaceOverviewOpen() {
     return osd.interactive && osd.hwnd != nullptr && IsWindowVisible(osd.hwnd) != FALSE;
+}
+
+bool OverviewDropTarget(POINT screen, int* mon, int* wsIndex) {
+    if (!WorkspaceOverviewOpen()) return false;
+    POINT pt = screen;
+    ScreenToClient(osd.hwnd, &pt);
+    const int col = OsdHitTest(pt).col;
+    if (col != osd.hoverCol) {
+        osd.hoverCol = col;
+        OsdInvalidate();
+    }
+    if (col < 0) return false;
+    if (mon) *mon = osd.mon;
+    if (wsIndex) *wsIndex = col;
+    return true;
+}
+
+void OverviewDropDone() {
+    if (osd.hoverCol >= 0) {
+        osd.hoverCol = -1;
+        OsdInvalidate();
+    }
 }
 
 void RefreshWorkspaceOverview() {
@@ -5181,6 +6237,592 @@ void DestroyTaskbarIndicators() {
 }  // namespace ht
 
 // =============================================================================
+// 57_stage.cpp — Mainstage side tiles: one small window per side window, showing
+// a live, scaled-down DWM thumbnail of it. Semantics: 10_contract.h.
+// =============================================================================
+
+namespace ht {
+
+namespace {
+
+constexpr DWORD kStageCornerAttr = 33;  // DWMWA_WINDOW_CORNER_PREFERENCE
+constexpr DWORD kStageCornerRound = 2;  // DWMWCP_ROUND
+constexpr UINT kStageRefitDelayMs = 250;
+constexpr UINT_PTR kStageHoverTimer = 1;  // on a tile window, while hovered
+constexpr UINT kStageHoverPollMs = 15;
+constexpr ULONGLONG kStageZoomHoldMs = 500;
+
+struct StageProxy {
+    HWND source = nullptr;        // the real window, stacked on the stage
+    HWND hwnd = nullptr;          // our tile window
+    HTHUMBNAIL thumb = nullptr;   // null when DWM refused the thumbnail
+    RECT cell{};                  // where the tile is, in screen pixels
+    RECT drawn{};                 // the thumbnail inside the tile, client pixels
+};
+
+struct StageState {
+    HINSTANCE hinst = nullptr;
+    bool classRegistered = false;
+    bool failureLogged = false;
+    COLORREF background = RGB(32, 32, 32);
+    std::vector<StageProxy> tiles;
+    // Left button held on a tile: a click until the cursor leaves the drag
+    // threshold, then a drag of the tile.
+    HWND pressTile = nullptr;
+    POINT pressCursor{};          // screen position at button down
+    bool pressDouble = false;     // the press was the second of a double click
+    bool dragging = false;
+    // Left Alt held over a tile: after kStageZoomHoldMs the tile shows its
+    // window at full size. The cursor is then held in place and mouse movement
+    // drags the picture under it.
+    HWND hoverTile = nullptr;     // the tile running kStageHoverTimer
+    ULONGLONG altSince = 0;       // tick when Alt was first seen down; 0 = up
+    HWND zoomTile = nullptr;      // the zoomed tile
+    POINT zoomAt{};               // where the cursor is held, tile client pixels
+    POINT zoomLock{};             // the same point on screen
+    double zoomU = 0.0;           // the point of the window shown at zoomAt, as
+    double zoomV = 0.0;           // fractions of its visible frame
+};
+
+StageState stage;
+
+StageProxy* StageFindByTile(HWND hwnd) {
+    for (StageProxy& tile : stage.tiles) {
+        if (tile.hwnd == hwnd) return &tile;
+    }
+    return nullptr;
+}
+
+StageProxy* StageFindBySource(HWND source) {
+    for (StageProxy& tile : stage.tiles) {
+        if (tile.source == source) return &tile;
+    }
+    return nullptr;
+}
+
+// Maps a point of the tile (client pixels) through the thumbnail's scale to
+// the matching screen point of the real window. False outside the thumbnail.
+bool StageMapToSource(const StageProxy& tile, POINT client, POINT* screen) {
+    const LONG drawnW = tile.drawn.right - tile.drawn.left;
+    const LONG drawnH = tile.drawn.bottom - tile.drawn.top;
+    if (drawnW <= 0 || drawnH <= 0 || !PtInRect(&tile.drawn, client) ||
+        !IsWindow(tile.source)) {
+        return false;
+    }
+    const RECT visible = GetVisibleFrame(tile.source);
+    if (stage.zoomTile == tile.hwnd) {
+        // Zoomed: full size around the held cursor point.
+        screen->x = visible.left + (client.x - stage.zoomAt.x) +
+                    std::lround(stage.zoomU * (visible.right - visible.left));
+        screen->y = visible.top + (client.y - stage.zoomAt.y) +
+                    std::lround(stage.zoomV * (visible.bottom - visible.top));
+        return PtInRect(&visible, *screen) != FALSE;
+    }
+    screen->x = visible.left + MulDiv(client.x - tile.drawn.left,
+                                      visible.right - visible.left, drawnW);
+    screen->y = visible.top + MulDiv(client.y - tile.drawn.top,
+                                     visible.bottom - visible.top, drawnH);
+    return true;
+}
+
+// The innermost child window of `root` at a screen point. WindowFromPoint is no
+// use here: the real window is covered by the stage window.
+HWND StageDeepestChild(HWND root, POINT screen) {
+    HWND current = root;
+    for (int depth = 0; depth < 32; ++depth) {
+        POINT pt = screen;
+        ScreenToClient(current, &pt);
+        const HWND child = ChildWindowFromPointEx(
+            current, pt,
+            CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT);
+        if (!child || child == current) break;
+        current = child;
+    }
+    return current;
+}
+
+// The window that should get a forwarded mouse message for tile point `client`,
+// and the point in its client coordinates and in screen coordinates. Null
+// outside the thumbnail and outside that window's client area.
+HWND StageForwardTarget(const StageProxy& tile, POINT client, POINT* inTarget,
+                        POINT* screen) {
+    if (!StageMapToSource(tile, client, screen)) return nullptr;
+    const HWND target = StageDeepestChild(tile.source, *screen);
+    *inTarget = *screen;
+    ScreenToClient(target, inTarget);
+    RECT area{};
+    GetClientRect(target, &area);
+    return PtInRect(&area, *inTarget) ? target : nullptr;
+}
+
+// Posts one click (move, down, up) into the real window. Posted, not sent: a
+// hung app must not block the engine.
+void StageForwardClick(const StageProxy& tile, POINT client, UINT down, UINT up,
+                       WPARAM button) {
+    POINT inTarget{};
+    POINT screen{};
+    const HWND target = StageForwardTarget(tile, client, &inTarget, &screen);
+    if (!target) {
+        HT_LOG(L"tile click at %ld,%ld not forwarded (thumbnail %ld,%ld-%ld,%ld)",
+               client.x, client.y, tile.drawn.left, tile.drawn.top,
+               tile.drawn.right, tile.drawn.bottom);
+        return;
+    }
+    WCHAR cls[64] = {};
+    GetClassNameW(target, cls, 64);
+    HT_LOG(L"tile click forwarded to %p (%s%s) at %ld,%ld",
+           static_cast<void*>(target), cls,
+           target == tile.source ? L", the window itself" : L", a child",
+           inTarget.x, inTarget.y);
+    const LPARAM where = MAKELPARAM(inTarget.x, inTarget.y);
+    PostMessageW(target, WM_MOUSEMOVE, 0, where);
+    PostMessageW(target, down, button, where);
+    PostMessageW(target, up, 0, where);
+}
+
+POINT StageClientPoint(LPARAM lp) {
+    return POINT{static_cast<short>(LOWORD(lp)), static_cast<short>(HIWORD(lp))};
+}
+
+// Puts a dragged tile back in its cell, behind the other windows.
+void StageRestoreTile(const StageProxy& tile) {
+    SetWindowPos(tile.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(tile.hwnd, HWND_BOTTOM, tile.cell.left, tile.cell.top,
+                 tile.cell.right - tile.cell.left,
+                 tile.cell.bottom - tile.cell.top, SWP_NOACTIVATE);
+}
+
+void StageFitThumbnail(StageProxy& tile);
+
+void StageEndZoom() {
+    const HWND before = stage.zoomTile;
+    if (!before) return;
+    stage.zoomTile = nullptr;
+    if (StageProxy* tile = StageFindByTile(before)) StageFitThumbnail(*tile);
+}
+
+// kStageHoverTimer: runs while the cursor is over the tile and decides whether
+// it is zoomed. Left Alt only, like the overview.
+void StageHoverTick(HWND hwnd) {
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    const bool over = WindowFromPoint(cursor) == hwnd ||
+                      (stage.pressTile == hwnd && !stage.dragging);
+    if (!over || stage.dragging) {
+        KillTimer(hwnd, kStageHoverTimer);
+        if (stage.hoverTile == hwnd) stage.hoverTile = nullptr;
+        stage.altSince = 0;
+        if (stage.zoomTile == hwnd) StageEndZoom();
+        return;
+    }
+    if (GetAsyncKeyState(VK_LMENU) >= 0) {
+        stage.altSince = 0;
+        if (stage.zoomTile == hwnd) StageEndZoom();
+        return;
+    }
+    const ULONGLONG now = GetTickCount64();
+    if (stage.altSince == 0) stage.altSince = now;
+    if (now - stage.altSince < kStageZoomHoldMs) return;
+    StageProxy* tile = StageFindByTile(hwnd);
+    if (!tile) return;
+
+    if (stage.zoomTile != hwnd) {
+        // Start: the point under the cursor is the one shown at full size.
+        const LONG drawnW = tile->drawn.right - tile->drawn.left;
+        const LONG drawnH = tile->drawn.bottom - tile->drawn.top;
+        if (drawnW <= 0 || drawnH <= 0) return;
+        POINT client = cursor;
+        ScreenToClient(hwnd, &client);
+        client.x = std::clamp<LONG>(client.x, tile->drawn.left, tile->drawn.right);
+        client.y = std::clamp<LONG>(client.y, tile->drawn.top, tile->drawn.bottom);
+        StageEndZoom();
+        stage.zoomTile = hwnd;
+        stage.zoomAt = client;
+        stage.zoomLock = client;
+        ClientToScreen(hwnd, &stage.zoomLock);
+        stage.zoomU = static_cast<double>(client.x - tile->drawn.left) / drawnW;
+        stage.zoomV = static_cast<double>(client.y - tile->drawn.top) / drawnH;
+        SetCursorPos(stage.zoomLock.x, stage.zoomLock.y);
+        StageFitThumbnail(*tile);
+        return;
+    }
+    // A held button is a click or the start of a tile drag: leave the cursor.
+    if (stage.pressTile == hwnd) return;
+    const int dx = cursor.x - stage.zoomLock.x;
+    const int dy = cursor.y - stage.zoomLock.y;
+    if (dx == 0 && dy == 0) return;
+    // The picture follows the mouse; the cursor goes back to where it was.
+    const RECT visible = GetVisibleFrame(tile->source);
+    const LONG visibleW = std::max<LONG>(1, visible.right - visible.left);
+    const LONG visibleH = std::max<LONG>(1, visible.bottom - visible.top);
+    stage.zoomU = std::clamp(stage.zoomU - static_cast<double>(dx) / visibleW,
+                             0.0, 1.0);
+    stage.zoomV = std::clamp(stage.zoomV - static_cast<double>(dy) / visibleH,
+                             0.0, 1.0);
+    SetCursorPos(stage.zoomLock.x, stage.zoomLock.y);
+    StageFitThumbnail(*tile);
+}
+
+LRESULT CALLBACK StageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+        case WM_MOUSEACTIVATE:
+            return MA_NOACTIVATE;
+
+        case WM_TIMER:
+            if (wp == kStageHoverTimer) StageHoverTick(hwnd);
+            return 0;
+
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONDBLCLK:
+            stage.pressTile = hwnd;
+            stage.pressDouble = msg == WM_LBUTTONDBLCLK;
+            stage.dragging = false;
+            GetCursorPos(&stage.pressCursor);
+            SetCapture(hwnd);
+            return 0;
+
+        case WM_MOUSEMOVE: {
+            if (stage.hoverTile != hwnd) {
+                if (stage.hoverTile) KillTimer(stage.hoverTile, kStageHoverTimer);
+                StageEndZoom();
+                stage.hoverTile = hwnd;
+                stage.altSince = 0;
+                SetTimer(hwnd, kStageHoverTimer, kStageHoverPollMs, nullptr);
+            }
+            if (stage.pressTile != hwnd || GetCapture() != hwnd) return 0;
+            const StageProxy* tile = StageFindByTile(hwnd);
+            if (!tile) return 0;
+            POINT cursor{};
+            GetCursorPos(&cursor);
+            const int dx = cursor.x - stage.pressCursor.x;
+            const int dy = cursor.y - stage.pressCursor.y;
+            if (!stage.dragging) {
+                // Generous, so a click with an unsteady hand stays a click.
+                const int limitX = 2 * GetSystemMetrics(SM_CXDRAG);
+                const int limitY = 2 * GetSystemMetrics(SM_CYDRAG);
+                if (dx >= -limitX && dx <= limitX && dy >= -limitY &&
+                    dy <= limitY) {
+                    return 0;
+                }
+                stage.dragging = true;
+                HT_LOG(L"tile drag started");
+                StageEndZoom();
+                // Above the other windows while it is carried. Only once: an
+                // overview that opens later (Alt) must stay above the tile.
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+            SetWindowPos(hwnd, nullptr, tile->cell.left + dx, tile->cell.top + dy,
+                         0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            OverviewDropTarget(cursor, nullptr, nullptr);  // moves the highlight
+            return 0;
+        }
+
+        case WM_LBUTTONUP: {
+            if (stage.pressTile != hwnd) return 0;
+            const bool dragged = stage.dragging;
+            const bool second = stage.pressDouble;
+            // Cleared first: ReleaseCapture sends WM_CAPTURECHANGED.
+            stage.pressTile = nullptr;
+            stage.dragging = false;
+            ReleaseCapture();
+            const StageProxy* tile = StageFindByTile(hwnd);
+            if (!tile) return 0;
+            if (dragged) {
+                // Copy: the drop retiles, which may destroy this tile.
+                const HWND source = tile->source;
+                StageRestoreTile(*tile);
+                POINT cursor{};
+                GetCursorPos(&cursor);
+                int mon = -1;
+                int wsIndex = -1;
+                if (OverviewDropTarget(cursor, &mon, &wsIndex)) {
+                    HT_LOG(L"tile dropped on workspace %d", wsIndex + 1);
+                    OverviewDropDone();
+                    MoveWindowToWorkspace(source, mon, wsIndex);
+                } else {
+                    StageDropWindow(source, cursor);
+                }
+            } else {
+                StageForwardClick(*tile, StageClientPoint(lp),
+                                  second ? WM_LBUTTONDBLCLK : WM_LBUTTONDOWN,
+                                  WM_LBUTTONUP, MK_LBUTTON);
+            }
+            return 0;
+        }
+
+        case WM_CAPTURECHANGED:
+            // Capture taken away mid-press: the drag is off.
+            if (stage.pressTile == hwnd) {
+                const bool dragged = stage.dragging;
+                stage.pressTile = nullptr;
+                stage.dragging = false;
+                if (dragged) {
+                    OverviewDropDone();
+                    if (const StageProxy* tile = StageFindByTile(hwnd)) {
+                        StageRestoreTile(*tile);
+                    }
+                }
+            }
+            return 0;
+
+        case WM_RBUTTONUP:
+            if (const StageProxy* tile = StageFindByTile(hwnd)) {
+                StageForwardClick(*tile, StageClientPoint(lp), WM_RBUTTONDOWN,
+                                  WM_RBUTTONUP, MK_RBUTTON);
+            }
+            return 0;
+
+        case WM_MBUTTONUP:
+            if (const StageProxy* tile = StageFindByTile(hwnd)) {
+                StageForwardClick(*tile, StageClientPoint(lp), WM_MBUTTONDOWN,
+                                  WM_MBUTTONUP, MK_MBUTTON);
+            }
+            return 0;
+
+        case WM_MOUSEWHEEL:
+        case WM_MOUSEHWHEEL:
+            if (const StageProxy* tile = StageFindByTile(hwnd)) {
+                // Wheel messages carry screen coordinates, in and out.
+                POINT client = StageClientPoint(lp);
+                ScreenToClient(hwnd, &client);
+                POINT inTarget{};
+                POINT screen{};
+                if (const HWND target =
+                        StageForwardTarget(*tile, client, &inTarget, &screen)) {
+                    PostMessageW(target, msg, wp, MAKELPARAM(screen.x, screen.y));
+                }
+            }
+            return 0;
+
+        case WM_ERASEBKGND: {
+            RECT client{};
+            GetClientRect(hwnd, &client);
+            const HBRUSH brush = CreateSolidBrush(stage.background);
+            FillRect(reinterpret_cast<HDC>(wp), &client, brush);
+            DeleteObject(brush);
+            return 1;
+        }
+
+        default:
+            break;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+// Logs the first creation failure only; later calls return quietly.
+bool StageFailed(const wchar_t* step, DWORD err) {
+    if (!stage.failureLogged) {
+        stage.failureLogged = true;
+        HT_LOG(L"stage tiles: %s failed (error %lu)", step, err);
+    }
+    return false;
+}
+
+bool StageEnsureClass() {
+    if (stage.classRegistered) return true;
+    // Address of our own code identifies this module (the mod DLL).
+    HINSTANCE hinst = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&StageWndProc), &hinst)) {
+        return StageFailed(L"module lookup", GetLastError());
+    }
+    stage.hinst = hinst;
+
+    WNDCLASSEXW wc{};
+    wc.cbSize = sizeof(wc);
+    wc.style = CS_DBLCLKS;  // double clicks are forwarded as such
+    wc.lpfnWndProc = StageWndProc;
+    wc.hInstance = stage.hinst;
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.lpszClassName = kStageWindowClass;  // no background: WM_ERASEBKGND paints
+    if (!RegisterClassExW(&wc)) {
+        return StageFailed(L"class registration", GetLastError());
+    }
+    stage.classRegistered = true;
+    return true;
+}
+
+// Scales the thumbnail to fit the tile, centred, never larger than the window
+// itself. The source is cropped to the visible frame (no resize borders).
+// The zoomed tile instead shows the window at full size, with the point
+// (stage.zoomU, stage.zoomV) of it at stage.zoomAt.
+void StageFitThumbnail(StageProxy& tile) {
+    if (!tile.thumb || !IsWindow(tile.source)) return;
+    RECT window{};
+    SIZE source{};
+    if (!GetWindowRect(tile.source, &window) ||
+        FAILED(DwmQueryThumbnailSourceSize(tile.thumb, &source))) {
+        return;
+    }
+    const LONG windowW = window.right - window.left;
+    const LONG windowH = window.bottom - window.top;
+    if (windowW <= 0 || windowH <= 0 || source.cx <= 0 || source.cy <= 0) return;
+
+    // DWM measures the source in its own pixels, which differ from ours for a
+    // DPI-virtualised app; map the visible frame through that factor.
+    const RECT visible = GetVisibleFrame(tile.source);
+    const double fx = static_cast<double>(source.cx) / windowW;
+    const double fy = static_cast<double>(source.cy) / windowH;
+    RECT crop{std::lround((visible.left - window.left) * fx),
+              std::lround((visible.top - window.top) * fy),
+              std::lround((visible.right - window.left) * fx),
+              std::lround((visible.bottom - window.top) * fy)};
+    crop.left = std::clamp<LONG>(crop.left, 0, source.cx - 1);
+    crop.top = std::clamp<LONG>(crop.top, 0, source.cy - 1);
+    crop.right = std::clamp<LONG>(crop.right, crop.left + 1, source.cx);
+    crop.bottom = std::clamp<LONG>(crop.bottom, crop.top + 1, source.cy);
+
+    const LONG cellW = tile.cell.right - tile.cell.left;
+    const LONG cellH = tile.cell.bottom - tile.cell.top;
+    const LONG visibleW = std::max<LONG>(1, visible.right - visible.left);
+    const LONG visibleH = std::max<LONG>(1, visible.bottom - visible.top);
+    const double scale =
+        std::min({1.0, static_cast<double>(cellW) / visibleW,
+                  static_cast<double>(cellH) / visibleH});
+    const LONG drawW = std::clamp<LONG>(std::lround(visibleW * scale), 1, cellW);
+    const LONG drawH = std::clamp<LONG>(std::lround(visibleH * scale), 1, cellH);
+    const LONG x = (cellW - drawW) / 2;
+    const LONG y = (cellH - drawH) / 2;
+
+    DWM_THUMBNAIL_PROPERTIES props{};
+    props.dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_RECTSOURCE |
+                    DWM_TNP_VISIBLE | DWM_TNP_OPACITY |
+                    DWM_TNP_SOURCECLIENTAREAONLY;
+    tile.drawn = RECT{x, y, x + drawW, y + drawH};
+    props.rcDestination = tile.drawn;
+    props.rcSource = crop;
+    if (stage.zoomTile == tile.hwnd && scale < 1.0) {
+        // tile.drawn stays the fitted rect; StageMapToSource knows the zoom.
+        const LONG left = stage.zoomAt.x - std::lround(stage.zoomU * visibleW);
+        const LONG top = stage.zoomAt.y - std::lround(stage.zoomV * visibleH);
+        // Only the part that lands inside the tile, and its part of the source.
+        RECT dest{std::max<LONG>(left, 0), std::max<LONG>(top, 0),
+                  std::min<LONG>(left + visibleW, cellW),
+                  std::min<LONG>(top + visibleH, cellH)};
+        if (dest.right > dest.left && dest.bottom > dest.top) {
+            const double sx = static_cast<double>(crop.right - crop.left) / visibleW;
+            const double sy = static_cast<double>(crop.bottom - crop.top) / visibleH;
+            RECT part{crop.left + std::lround((dest.left - left) * sx),
+                      crop.top + std::lround((dest.top - top) * sy),
+                      crop.left + std::lround((dest.right - left) * sx),
+                      crop.top + std::lround((dest.bottom - top) * sy)};
+            part.right = std::clamp<LONG>(part.right, part.left + 1, crop.right);
+            part.bottom = std::clamp<LONG>(part.bottom, part.top + 1, crop.bottom);
+            props.rcDestination = dest;
+            props.rcSource = part;
+        }
+    }
+    props.opacity = 255;
+    props.fVisible = TRUE;
+    props.fSourceClientAreaOnly = FALSE;
+    DwmUpdateThumbnailProperties(tile.thumb, &props);
+}
+
+void StageDestroyTile(StageProxy& tile) {
+    if (stage.hoverTile == tile.hwnd) stage.hoverTile = nullptr;
+    if (stage.zoomTile == tile.hwnd) stage.zoomTile = nullptr;
+    if (tile.thumb) DwmUnregisterThumbnail(tile.thumb);
+    if (tile.hwnd && IsWindow(tile.hwnd)) DestroyWindow(tile.hwnd);
+    tile = StageProxy{};
+}
+
+// Creates the tile window for `source` at `cell`, behind every other window.
+bool StageCreateTile(HWND source, const RECT& cell, StageProxy* out) {
+    if (!StageEnsureClass()) return false;
+    HWND hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                                kStageWindowClass, L"HawkTile stage tile",
+                                WS_POPUP, cell.left, cell.top,
+                                cell.right - cell.left, cell.bottom - cell.top,
+                                nullptr, nullptr, stage.hinst, nullptr);
+    if (!hwnd) return StageFailed(L"window creation", GetLastError());
+
+    // Rounded corners on Windows 11; older systems ignore the attribute.
+    DWORD corner = kStageCornerRound;
+    DwmSetWindowAttribute(hwnd, kStageCornerAttr, &corner, sizeof(corner));
+
+    StageProxy tile;
+    tile.source = source;
+    tile.hwnd = hwnd;
+    tile.cell = cell;
+    const HRESULT hr = DwmRegisterThumbnail(hwnd, source, &tile.thumb);
+    if (FAILED(hr)) {
+        // The tile still works as a button for its window, just without a picture.
+        tile.thumb = nullptr;
+        StageFailed(L"thumbnail registration", static_cast<DWORD>(hr));
+    }
+    SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    *out = tile;
+    return true;
+}
+
+}  // namespace
+
+void SyncStageProxies() {
+    const std::vector<StageTile> wanted = StageSideTiles();
+
+    // Drop tiles that lost their cell or their window.
+    for (StageProxy& tile : stage.tiles) {
+        bool keep = IsWindow(tile.source) && IsWindow(tile.hwnd);
+        if (keep) {
+            keep = false;
+            for (const StageTile& want : wanted) {
+                if (want.hwnd == tile.source) keep = true;
+            }
+        }
+        if (!keep) StageDestroyTile(tile);
+    }
+    std::erase_if(stage.tiles,
+                  [](const StageProxy& tile) { return tile.hwnd == nullptr; });
+    if (wanted.empty()) return;
+
+    const COLORREF background = ResolveTheme().background;
+    const bool repaint = background != stage.background;
+    stage.background = background;
+
+    for (const StageTile& want : wanted) {
+        StageProxy* tile = StageFindBySource(want.hwnd);
+        if (!tile) {
+            StageProxy created;
+            if (!StageCreateTile(want.hwnd, want.cell, &created)) continue;
+            stage.tiles.push_back(created);
+            tile = &stage.tiles.back();
+        } else if (!EqualRect(&tile->cell, &want.cell)) {
+            tile->cell = want.cell;
+            SetWindowPos(tile->hwnd, nullptr, want.cell.left, want.cell.top,
+                         want.cell.right - want.cell.left,
+                         want.cell.bottom - want.cell.top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        if (repaint) InvalidateRect(tile->hwnd, nullptr, TRUE);
+        StageFitThumbnail(*tile);
+    }
+    // The real windows reach their stage size asynchronously; fit once more.
+    if (g.engineHwnd) {
+        SetTimer(g.engineHwnd, kTimerStage, kStageRefitDelayMs, nullptr);
+    }
+}
+
+void RefitStageProxies() {
+    for (StageProxy& tile : stage.tiles) StageFitThumbnail(tile);
+}
+
+void DestroyStageProxies() {
+    for (StageProxy& tile : stage.tiles) StageDestroyTile(tile);
+    stage.tiles.clear();
+    if (stage.classRegistered) {
+        UnregisterClassW(kStageWindowClass, stage.hinst);
+        stage.classRegistered = false;
+    }
+    stage.failureLogged = false;
+}
+
+}  // namespace ht
+
+// =============================================================================
 // 60_engine.cpp — engine thread, hidden engine window, WinEvent hooks and the
 // lifecycle (start, settings reload, stop).
 // =============================================================================
@@ -5220,6 +6862,12 @@ UINT s_shellHookMsg = 0;  // "SHELLHOOK" registered message id
 bool s_leftAltDown = false;  // left Alt is down, as seen by Raw Input
 bool s_holdArmed = false;    // kTimerHold is pending for this Alt press
 bool s_holdShown = false;    // this Alt press opened the overview
+
+// Alt+Shift mouse resize (see the rules at the end of 10_contract.h).
+bool s_resizePolling = false;  // kTimerMouseResize runs for the current chord
+bool s_resizeGaveUp = false;   // this chord found no tiled window; wait for it
+                               // to turn off before trying again
+POINT s_resizeAnchor{};        // cursor position when the chord turned on
 
 // Raw Input keyboard: generic desktop page (0x01), keyboard usage (0x06).
 constexpr USHORT kRawUsagePage = 0x01;
@@ -5374,6 +7022,7 @@ void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject,
             // A destroyed HWND can be reused by a new window; drop stale state.
             g.pendingVisibility.erase(hwnd);
             g.pendingActivation.erase(hwnd);
+            g.needsNudge.erase(hwnd);
             if (managed) {
                 UnmanageWindow(hwnd);
                 RequestRetile();
@@ -5443,6 +7092,9 @@ void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject,
                     g.zoomed.insert(hwnd);
                 } else {
                     g.zoomed.erase(hwnd);
+                    // Restored from maximized: the app may miss the resize.
+                    g.needsNudge.insert(hwnd);
+                    RequestNudge();
                 }
                 RequestRetile();
             }
@@ -5522,12 +7174,87 @@ void DropHold() {
     CloseWorkspaceOverview(true);
 }
 
+// Alt+Shift chord: left Alt and Shift (either) down, Ctrl and Win up.
+bool ResizeChordDown() {
+    return KeyDown(VK_LMENU) && KeyDown(VK_SHIFT) && !KeyDown(VK_CONTROL) &&
+           !KeyDown(VK_LWIN) && !KeyDown(VK_RWIN);
+}
+
+// Ends the mouse-resize poll for this chord and any session it started.
+void StopMouseResize() {
+    KillTimer(g.engineHwnd, kTimerMouseResize);
+    s_resizePolling = false;
+    EndMouseResize();
+}
+
+// kTimerMouseResize, every 16 ms while the chord is held. Starts a session once
+// the cursor has left the anchor's drag-threshold box; then follows the cursor.
+void PollMouseResize() {
+    if (!ResizeChordDown()) {
+        StopMouseResize();
+        return;
+    }
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    if (MouseResizeActive()) {
+        UpdateMouseResize(cursor);
+        return;
+    }
+    const int limitX = 2 * GetSystemMetrics(SM_CXDRAG);
+    const int limitY = 2 * GetSystemMetrics(SM_CYDRAG);
+    const int dx = cursor.x - s_resizeAnchor.x;
+    const int dy = cursor.y - s_resizeAnchor.y;
+    if (dx >= -limitX && dx <= limitX && dy >= -limitY && dy <= limitY) {
+        return;
+    }
+    if (BeginMouseResize(s_resizeAnchor)) {
+        // Without this key, releasing Alt or Shift would open the menu bar or
+        // switch the input language.
+        SendMenuMaskKey();
+    } else {
+        // Nothing tiled under the cursor: give up until the chord turns off.
+        StopMouseResize();
+        s_resizeGaveUp = true;
+    }
+}
+
+// Alt+Shift mouse-resize part of one key event, after HoldKeyEvent. leftAlt is
+// left Alt only; right Alt counts as any other key, as in the hold rules.
+void ResizeKeyEvent(UINT vk, bool keyUp, bool leftAlt) {
+    const bool shift = vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT;
+    if (!ResizeChordDown()) {
+        s_resizeGaveUp = false;
+    }
+    if (keyUp) {
+        if ((leftAlt || shift) && s_resizePolling) {
+            StopMouseResize();
+        }
+        return;
+    }
+    if (leftAlt || shift) {
+        // Auto-repeat key-downs find the poll already running and do nothing.
+        if (!s_resizePolling && !s_resizeGaveUp && ResizeChordDown() &&
+            g.settings.mouseResize && !g.paused && !WorkspaceOverviewOpen()) {
+            GetCursorPos(&s_resizeAnchor);
+            SetTimer(g.engineHwnd, kTimerMouseResize, 16, nullptr);
+            s_resizePolling = true;
+        }
+        return;
+    }
+    // Any other key ends the resize, keeping the ratios (Alt+Shift+1 does).
+    if (s_resizePolling) {
+        StopMouseResize();
+    }
+}
+
 // kTimerHold: left Alt has been held for holdDelayMs. Opens the overview on the
-// focused monitor when Alt is still down and the feature is still enabled.
+// focused monitor when Alt is still down and the feature is still enabled. Never
+// while an Alt+Shift mouse resize is in progress.
 void OpenHoldOverview() {
     s_holdArmed = false;
     const int mon = g.focusedMon;
-    if (!s_leftAltDown || !KeyDown(VK_LMENU) || !HoldEnabled() || mon < 0 ||
+    if (s_resizePolling || !s_leftAltDown || !KeyDown(VK_LMENU) ||
+        !HoldEnabled() || mon < 0 ||
         mon >= static_cast<int>(g.monitors.size())) {
         return;
     }
@@ -5556,19 +7283,9 @@ void PollHoldOverview() {
     }
 }
 
-// Raw Input keyboard report. Implements the hold-left-Alt rules. Key codes and
-// characters are never logged.
-void OnRawKey(const RAWKEYBOARD& key) {
-    const UINT vk = key.VKey;
-    // Our own masking key, and the 0xFF filler some drivers report.
-    if (vk == kMenuMaskVk || vk == 0xFF) {
-        return;
-    }
-    const bool keyUp = (key.Flags & RI_KEY_BREAK) != 0;
-    // Right Alt (E0) is AltGr on many layouts, so it counts as any other key.
-    const bool leftAlt =
-        (vk == VK_MENU || vk == VK_LMENU) && (key.Flags & RI_KEY_E0) == 0;
-
+// Hold-left-Alt rules for one key event (masking key and filler already
+// dropped by OnRawKey). Key codes and characters are never logged.
+void HoldKeyEvent(UINT vk, bool keyUp, bool leftAlt) {
     if (leftAlt) {
         if (keyUp) {
             s_leftAltDown = false;
@@ -5612,6 +7329,22 @@ void OnRawKey(const RAWKEYBOARD& key) {
             DisarmHold();
         }
     }
+}
+
+// Raw Input keyboard report: the hold-left-Alt rules, then the Alt+Shift
+// mouse-resize rules, both on the same key event.
+void OnRawKey(const RAWKEYBOARD& key) {
+    const UINT vk = key.VKey;
+    // Our own masking key, and the 0xFF filler some drivers report.
+    if (vk == kMenuMaskVk || vk == 0xFF) {
+        return;
+    }
+    const bool keyUp = (key.Flags & RI_KEY_BREAK) != 0;
+    // Right Alt (E0) is AltGr on many layouts, so it counts as any other key.
+    const bool leftAlt =
+        (vk == VK_MENU || vk == VK_LMENU) && (key.Flags & RI_KEY_E0) == 0;
+    HoldKeyEvent(vk, keyUp, leftAlt);
+    ResizeKeyEvent(vk, keyUp, leftAlt);
 }
 
 LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
@@ -5695,6 +7428,34 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                 case kTimerHoldPoll:
                     PollHoldOverview();
                     break;
+                case kTimerMouseResize:
+                    PollMouseResize();
+                    break;
+                case kTimerNudge: {
+                    KillTimer(hwnd, kTimerNudge);
+                    const std::vector<HWND> pending(g.needsNudge.begin(),
+                                                    g.needsNudge.end());
+                    g.needsNudge.clear();
+                    int nudged = 0;
+                    for (HWND window : pending) {
+                        WinLoc loc;
+                        if (!Locate(window, &loc) ||
+                            g.hiddenByUs.count(window) > 0 ||
+                            loc.ws != g.monitors[loc.mon].active) {
+                            continue;
+                        }
+                        NudgeWindow(window);
+                        ++nudged;
+                    }
+                    if (nudged > 0) {
+                        HT_LOG(L"nudged %d window(s)", nudged);
+                    }
+                    break;
+                }
+                case kTimerStage:
+                    KillTimer(hwnd, kTimerStage);
+                    RefitStageProxies();
+                    break;
                 default:
                     break;
             }
@@ -5721,6 +7482,9 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
             UpdateTaskbarIndicators();
             if (!g.settings.holdOverview) {
                 DropHold();
+            }
+            if (!g.settings.mouseResize) {
+                StopMouseResize();
             }
             return 0;
         }
@@ -5749,6 +7513,7 @@ LRESULT CALLBACK EngineWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                     g.borderedHwnd = nullptr;
                 }
                 DropHold();
+                StopMouseResize();
                 g.paused = true;
             }
             return 0;
@@ -5823,6 +7588,9 @@ void TeardownEngine(HWND hwnd) {
     KillTimer(hwnd, kTimerBarPoll);
     KillTimer(hwnd, kTimerHold);
     KillTimer(hwnd, kTimerHoldPoll);
+    KillTimer(hwnd, kTimerMouseResize);
+    KillTimer(hwnd, kTimerNudge);
+    KillTimer(hwnd, kTimerStage);
 
     // The hold state belongs to this engine run: the next start begins with Alt
     // released, and an open overview closes before its window is destroyed.
@@ -5830,6 +7598,10 @@ void TeardownEngine(HWND hwnd) {
     s_holdArmed = false;
     s_holdShown = false;
     CloseWorkspaceOverview(true);
+
+    // Ends a mouse-resize session (ratios kept) and clears its poll state.
+    StopMouseResize();
+    s_resizeGaveUp = false;
 
     // No window may stay hidden behind a dead engine.
     const std::vector<HWND> hidden(g.hiddenByUs.begin(), g.hiddenByUs.end());
@@ -5847,6 +7619,7 @@ void TeardownEngine(HWND hwnd) {
     }
 
     DestroyTaskbarIndicators();
+    DestroyStageProxies();
     DestroyOsd();
     DeregisterShellHookWindow(hwnd);
     s_shellHookMsg = 0;
@@ -5883,6 +7656,9 @@ DWORD WINAPI EngineThreadProc(LPVOID) {
     }
 
     LoadSettings(g.settings);
+    // RefreshMonitors creates the workspaces with these layouts.
+    g.appliedWorkspaceLayouts = g.settings.workspaceLayouts;
+    LoadAlwaysFloatApps();
     RestoreLeftoverHiddenWindows();
     RefreshMonitors();
     AdoptExistingWindows();
