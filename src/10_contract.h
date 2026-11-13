@@ -3,7 +3,8 @@
 //
 // build.ps1 concatenates the fragments in order into ONE translation unit:
 //   00_header.wh.cpp, 10_contract.h, 20_layout.cpp, 30_win32.cpp,
-//   40_config.cpp, 50_model.cpp, 60_engine.cpp, 90_toolmod.cpp
+//   40_config.cpp, 50_model.cpp, 55_osd.cpp, 56_bar.cpp, 57_stage.cpp,
+//   60_engine.cpp, 90_toolmod.cpp
 // Fragments therefore never #include each other. Everything a fragment needs
 // from another fragment is declared here. Do not change these signatures in a
 // fragment; if a change is needed, it is made here first.
@@ -21,6 +22,7 @@
 #include <cwchar>
 #include <cwctype>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -71,14 +73,17 @@ inline constexpr UINT_PTR kTimerBar = 6;              // coalesced taskbar-indic
 inline constexpr UINT_PTR kTimerBarPoll = 7;          // periodic taskbar-indicator check, 1000 ms
 inline constexpr UINT_PTR kTimerHold = 8;             // left Alt held long enough → overview, settings.holdDelayMs
 inline constexpr UINT_PTR kTimerHoldPoll = 9;         // overview open: is left Alt still down? 100 ms
-inline constexpr int kHotkeyIdBase = 0x100;           // hotkey id = base + binding index
+inline constexpr UINT_PTR kTimerMouseResize = 10;     // Alt+Shift held: follow the mouse, 16 ms
+inline constexpr UINT_PTR kTimerNudge = 11;           // re-send sizes to g.needsNudge, 300 ms (coalesced)
+inline constexpr UINT_PTR kTimerStage = 12;           // re-fit the Mainstage side tiles, 250 ms (coalesced)
+inline constexpr int kHotkeyIdBase = 0x100;          // hotkey id = base + binding index
 inline constexpr BYTE kMenuMaskVk = 0xE8;             // unassigned VK used to mask Alt/Win
 
 // =============================================================================
 // Layout (20_layout.cpp) — pure functions, no Win32 calls except RECT type.
 // =============================================================================
 
-enum class LayoutKind { Dwindle, MasterStack, Columns, Rows, Monocle, Count_ };
+enum class LayoutKind { Dwindle, MasterStack, Columns, Rows, Monocle, Mainstage, Count_ };
 enum class Direction { Left, Right, Up, Down };
 
 struct LayoutParams {
@@ -92,13 +97,20 @@ struct LayoutParams {
     // Dwindle only: flips[i] != 0 inverts the automatic orientation of split i
     // (vertical ↔ horizontal). Ignored by the other layouts.
     std::vector<int> flips;
+    // Mainstage only: default share of the area's width the stage takes.
+    double stageRatio = 0.5;
+    // Mainstage only: sides[j] != 0 puts side window j (layout index j + 1) on
+    // the right of the stage, 0 on the left. Side windows beyond the vector
+    // alternate: even j left, odd j right.
+    std::vector<int> sides;
 };
 
 // Returns exactly `count` rects tiling `area` (count <= 0 → empty vector).
 // Gap rule: outer edges of the result coincide with `area`; neighbouring
 // rects are separated by exactly innerGap px. Every rect has width/height >= 1.
+// (Mainstage follows its own rules, below.)
 //
-// Every layout except Monocle is a sequence of count-1 binary splits of the
+// Every layout except Monocle and Mainstage is a sequence of count-1 binary splits of the
 // gap-expanded area. Split i cuts the remaining region; window i takes side A
 // (the left part of a vertical cut, the top part of a horizontal cut), windows
 // i+1.. continue in side B. The last window takes what remains. Orientation:
@@ -109,6 +121,20 @@ struct LayoutParams {
 //  - Monocle:     no splits; every rect == area.
 // The ratio of split i is SplitRatio(p, count, i).
 // Cut position = lo + lround((hi - lo) * ratio) on the remaining region's extent.
+//
+// Mainstage: rect 0 is the STAGE, the full height of `area`, horizontally
+// centred, lround(width * SplitRatio(p, count, 0)) wide. Rects 1.. are SIDE
+// CELLS: side window j (rect j + 1) goes left or right of the stage as
+// p.sides says, and each side fills in order. A side is the strip between the
+// area's edge and the stage, innerGap away from the stage. It is divided into
+// three equal SLOTS stacked from the top, innerGap apart. With up to three
+// windows on a side each gets a slot. With more, the first two keep their
+// slots and the rest share the last slot in a grid of boxes, innerGap apart,
+// filled row by row: columns = the smallest c with c * c >= rest, rows =
+// ceil(rest / c) (2 side by side, then 2x2, 3x2, 3x3, ...). A cell is the
+// largest rect with the stage's aspect ratio inside its slot or box, centred,
+// so a window sized for the stage scales into its cell without bars. All
+// rects lie inside `area`.
 std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams& p);
 
 // Effective ratio of split i: p.ratios[i] if present and 0 < r < 1 (clamped to
@@ -117,6 +143,8 @@ std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams&
 //   MasterStack:  i == 0 ? masterRatio : 1.0 / (count - i)   (equal stack rows)
 //   Columns/Rows: 1.0 / (count - i)                          (equal slots)
 // masterRatio is clamped to [0.05, 0.95]. Returns 0.5 for out-of-range i.
+// Mainstage has one ratio, "split" 0 for any count: the stage's share of the
+// width, p.ratios[0] if set, else p.stageRatio, clamped to [0.2, 0.9].
 double SplitRatio(const LayoutParams& p, int count, int split);
 
 // The user resized tiled window `index` (its position in the same window list
@@ -143,6 +171,10 @@ double SplitRatio(const LayoutParams& p, int count, int split);
 //     are added or removed.
 // p.ratios is padded with 0.0 up to count-1 entries first. Returns true if
 // any ratio changed. Monocle, count < 2 or a bad index → false, p unchanged.
+// Mainstage: only index 0 (the stage) can be resized, with any count >= 1. A
+// width change of more than 2 px against the current stage rect is applied
+// twice (the stage stays centred, so the dragged edge ends where it was put):
+// p.ratios[0] = (stageWidth + 2 * change) / areaWidth, clamped to [0.2, 0.9].
 bool ApplyResize(const RECT& area, int count, LayoutParams& p, int index,
                  const RECT& newRect);
 
@@ -162,7 +194,7 @@ bool ToggleSplitAt(LayoutParams& p, int count, int index);
 int FindNeighbor(const std::vector<RECT>& rects, int from, Direction dir);
 
 LayoutKind NextLayout(LayoutKind k);           // cycles, skipping Count_
-const wchar_t* LayoutName(LayoutKind k);       // "dwindle","master","columns","rows","monocle"
+const wchar_t* LayoutName(LayoutKind k);       // "dwindle","master","columns","rows","monocle","mainstage"
 bool ParseLayoutName(const wchar_t* s, LayoutKind* out);  // case-insensitive, inverse of LayoutName
 
 // =============================================================================
@@ -191,9 +223,12 @@ enum class CommandKind {
     GrowMaster,
     ShrinkMaster,
     ResizeActive,           // dir: push the focused window's boundary toward dir
+                            // (Mainstage: right/up widen the stage, left/down
+                            // narrow it, by settings.ratioStep, within 0.2..0.9)
     Rescan,                 // re-read monitors, adopt new windows, retile
     ToggleTiling,           // pause / resume tiling
     CloseWindow,
+    ToggleAlwaysFloat,      // remember / forget the focused window's app as "never tile"
 };
 
 struct Command {
@@ -227,6 +262,10 @@ struct Settings {
     LayoutKind defaultLayout = LayoutKind::Dwindle;  // layout.default
     double masterRatio = 0.55;       // layout.masterRatio (percent, 55), clamped 15..85
     double ratioStep = 0.05;         // layout.resizeStep (percent, 5), clamped 1..25
+    double stageRatio = 0.5;         // layout.stageWidth (percent, 50), clamped 20..90
+    // layout.workspaceLayouts[i]: layout of workspace i + 1 on every monitor.
+    // Count_ = "use defaultLayout" (empty, "default" or unknown text). Up to 9.
+    std::vector<LayoutKind> workspaceLayouts;
     bool focusBorder = true;         // border.enabled
     COLORREF focusBorderColor = RGB(0x4C, 0x9A, 0xFF);  // border.color ("RRGGBB" or "#RRGGBB")
     bool floatNonResizable = true;   // windows.floatNonResizable
@@ -236,6 +275,7 @@ struct Settings {
     int osdDurationMs = 2000;        // indicators.popupDuration; <= 0 → 2000, clamped 100..10000
     bool holdOverview = true;        // indicators.holdAlt
     int holdDelayMs = 400;           // indicators.holdDelay; <= 0 → 400, clamped 100..2000
+    bool mouseResize = true;         // windows.mouseResize (Alt+Shift + move the mouse)
     bool taskbarIndicator = true;    // indicators.taskbar
     bool attentionDots = true;       // indicators.notificationDots
     bool followActivation = true;    // windows.followActivation
@@ -282,9 +322,11 @@ inline constexpr DefaultBinding kDefaultBindings[] = {
     {L"alt+w", L"closewindow"},
     {L"alt+f", L"fullscreen"},
     {L"alt+t", L"togglefloating"},
+    {L"alt+shift+t", L"togglealwaysfloat"},
     {L"alt+j", L"togglesplit"},
     {L"alt+l", L"nextlayout"},
     {L"alt+equals", L"resizeactive left"},
+    {L"alt+period", L"resizeactive left"},
     {L"alt+minus", L"resizeactive right"},
     {L"alt+shift+equals", L"resizeactive down"},
     {L"alt+shift+minus", L"resizeactive up"},
@@ -323,9 +365,10 @@ bool ParseHotkey(const wchar_t* text, UINT* modifiers, UINT* vk);
 //   movefocus <dir>          swapwindow <dir>         resizeactive <dir>
 //   workspace N|next|prev    movetoworkspace N        movetoworkspacesilent N
 //   focusmonitor next        movetomonitor next
-//   nextlayout               layout dwindle|master|columns|rows|monocle
+//   nextlayout               layout dwindle|master|columns|rows|monocle|mainstage
 //   togglefloating  togglemonocle  fullscreen  togglesplit  swapwithmaster
 //   growmaster  shrinkmaster  rescan  toggletiling  closewindow
+//   togglealwaysfloat
 bool ParseCommand(const wchar_t* text, Command* out);
 
 // "process:notepad.exe" | "class:#32770" | "title:Picture-in-Picture".
@@ -376,7 +419,8 @@ bool IsWindowCloaked(HWND hwnd);
 //          neither WS_THICKFRAME nor full WS_CAPTION;
 //          visible frame smaller than 40x40 px (only checked when visible);
 //          matches settings.ignoreRules.
-//  Float:  matches settings.floatRules; has an owner window; (floatTopmost &&
+//  Float:  its processName is in g.alwaysFloatApps (apps remembered with
+//          togglealwaysfloat); matches settings.floatRules; has an owner window; (floatTopmost &&
 //          WS_EX_TOPMOST); (floatNonResizable && !WS_THICKFRAME).
 //  Tile:   everything else.
 Eligibility ClassifyWindow(HWND hwnd, const Settings& settings);
@@ -411,8 +455,20 @@ void ClearFocusBorder(HWND hwnd);
 // Workspace visibility. Hide: insert into g.hiddenByUs FIRST, then
 // ShowWindowAsync(SW_HIDE). Show: erase from g.hiddenByUs FIRST, then
 // ShowWindowAsync(SW_SHOWNA). Both call PersistHiddenList().
+// ShowForWorkspace also inserts hwnd into g.needsNudge and calls
+// RequestNudge().
 void HideForWorkspace(HWND hwnd);
 void ShowForWorkspace(HWND hwnd);
+
+// Forces a fresh WM_SIZE without changing the final size: reads GetWindowRect,
+// then two SetWindowPos calls (SWP_NOZORDER | SWP_NOOWNERZORDER |
+// SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS, so a hung app cannot block us): first
+// one pixel narrower, then the original rect. Skips hidden, minimized and
+// maximized windows.
+void NudgeWindow(HWND hwnd);
+// SetTimer(g.engineHwnd, kTimerNudge, 300) — restarts the delay, so a burst of
+// shows/restores is nudged once, after it settles.
+void RequestNudge();
 
 // Mod storage key "hiddenWindows": comma-separated "hwnd:pid" hex pairs of
 // g.hiddenByUs, via Wh_SetStringValue. RestoreLeftoverHiddenWindows reads it
@@ -422,6 +478,15 @@ void ShowForWorkspace(HWND hwnd);
 // Under HT_STANDALONE both are no-ops.
 void PersistHiddenList();
 void RestoreLeftoverHiddenWindows();
+
+// Apps the user told HawkTile never to tile (togglealwaysfloat). Mod storage
+// key "alwaysFloatApps": lowercase exe file names (as in
+// WindowFacts::processName) joined with '|'. Load replaces g.alwaysFloatApps
+// with the stored set (empty when missing) and logs how many apps it holds;
+// Save writes the set back (Wh_DeleteValue when empty). Under HT_STANDALONE
+// both only touch memory.
+void LoadAlwaysFloatApps();
+void SaveAlwaysFloatApps();
 
 // =============================================================================
 // Model (50_model.cpp)
@@ -436,6 +501,10 @@ struct Workspace {
     // default of split 0 comes from settings.masterRatio at layout time.
     std::vector<double> ratios;
     std::vector<int> flips;       // LayoutParams::flips (dwindle split orientation)
+    // Mainstage: which side each tiled window's tile is on (0 left, 1 right).
+    // A window without an entry gets the side with fewer tiles at the next
+    // Retile; entries of windows that left the workspace are dropped there.
+    std::unordered_map<HWND, int> stageSide;
     HWND lastFocus = nullptr;
 };
 
@@ -469,6 +538,18 @@ struct EngineState {
     // Managed windows that asked for attention (FlashWindowEx → shell hook
     // HSHELL_FLASH) and have not been activated since.
     std::unordered_set<HWND> attention;
+    // Windows that were just shown again (ShowForWorkspace) or just restored
+    // from maximized (engine, EVENT_OBJECT_LOCATIONCHANGE zoomed → not zoomed).
+    // Some apps (Revit) miss the resize that follows and keep painting at
+    // their old size, leaving the rest of the window black; kTimerNudge
+    // re-sends their size (NudgeWindow) once things have settled.
+    std::unordered_set<HWND> needsNudge;
+    // Lowercase exe names whose windows always float (togglealwaysfloat),
+    // persisted in mod storage by Load/SaveAlwaysFloatApps.
+    std::unordered_set<std::wstring> alwaysFloatApps;
+    // settings.workspaceLayouts as last applied to the workspaces, so a
+    // settings reload only touches the workspaces whose entry changed.
+    std::vector<LayoutKind> appliedWorkspaceLayouts;
     HWND dragHwnd = nullptr;           // window of the last EVENT_SYSTEM_MOVESIZESTART
     RECT dragStartFrame{};             // its visible frame when the drag started
 };
@@ -485,8 +566,9 @@ void RefreshMonitors();
 
 // Applies g.settings after a reload: resizes every monitor's workspace vector
 // to workspaceCount (windows from removed workspaces move into the last
-// remaining one and are shown if that one is active), then RetileAll() and
-// UpdateFocusBorder().
+// remaining one and are shown if that one is active); every workspace whose
+// settings.workspaceLayouts entry differs from g.appliedWorkspaceLayouts and
+// names a layout switches to it; then RetileAll() and UpdateFocusBorder().
 void ApplySettingsChange();
 
 bool Locate(HWND hwnd, WinLoc* loc);           // linear scan of all lists
@@ -505,9 +587,46 @@ void UnmanageWindow(HWND hwnd);
 // Lays out the active workspace of `mon`: tiled windows that are not in
 // g.hiddenByUs && !IsIconic && !IsZoomed, inside rcWork deflated by
 // outerGap, using ComputeLayout. A window whose PlaceWindow returns false is
-// moved to the floating list (logged). No-op while g.paused.
+// moved to the floating list (logged). Lays nothing out while g.paused.
+//
+// Mainstage: every layout window is placed on the STAGE rect (rect 0), stacked
+// like monocle, so the one on top of the z-order is the one in use. Before
+// laying out, that topmost layout window is swapped into layout index 0 (the
+// stage follows focus; the window that leaves the stage takes the other's
+// place in the list and its side). Then stale ws.stageSide entries are
+// dropped and side windows without one get the side with fewer tiles (left
+// on a tie). The windows at index 1.. are shown in their side cells as live
+// scaled-down tiles by SyncStageProxies(), which Retile and RetileAll always
+// call last, paused or not.
 void Retile(int mon);
 void RetileAll();
+
+// One Mainstage side window: the real window (stacked under the stage window)
+// and the side cell its tile is drawn in, in screen pixels.
+struct StageTile {
+    HWND hwnd = nullptr;
+    RECT cell{};
+};
+// Every side window of every monitor whose active workspace uses Mainstage:
+// layout windows 1.. with rects 1.. of ComputeLayout. Empty while g.paused.
+std::vector<StageTile> StageSideTiles();
+
+// Mainstage drag and drop: tiled window `hwnd` (a side tile that was dragged,
+// or the stage window after the user moved it by its title bar) was dropped
+// with the mouse at screen point `pt`. No-op unless hwnd is a layout window of
+// an active Mainstage workspace. By what lies under pt:
+//  - its own slot: nothing;
+//  - the stage (hwnd is a side window): FocusWindow(hwnd), so it takes the stage;
+//  - another window's tile, hwnd is the stage window: FocusWindow(that window)
+//    (they trade places);
+//  - another window's tile, hwnd is a side window: the two swap places in the
+//    tiled list and swap sides;
+//  - elsewhere left or right of the stage, inside the monitor's work area:
+//    hwnd moves to the end of that side (end of the tiled list, stageSide set).
+//    When hwnd was the stage window, the next layout window is focused so it
+//    takes the stage; needs at least two layout windows.
+// Always ends with Retile(its monitor).
+void StageDropWindow(HWND hwnd, POINT pt);
 // SetTimer(g.engineHwnd, kTimerRetile, 15) — coalesces bursts of events.
 void RequestRetile();
 
@@ -532,6 +651,8 @@ HWND CommandTarget();
 // Called on EVENT_SYSTEM_FOREGROUND. If managed: g.focusedMon = its monitor,
 // its workspace's lastFocus = hwnd. Then UpdateFocusBorder(). Also clears the
 // resolved managed window from g.attention (RequestBarUpdate() if it was there).
+// A tiled window on an active Mainstage workspace: Retile(its monitor) first,
+// which moves it onto the stage.
 void OnFocusChanged(HWND hwnd);
 
 // "Follow activation": brings the workspace that holds managed window hwnd on
@@ -558,7 +679,10 @@ bool WorkspaceHasAttention(int mon, int wsIndex);
 void UpdateFocusBorder();
 
 // After a user drag or border resize (EVENT_SYSTEM_MOVESIZEEND) of a managed
-// window: if its visible-frame center is now on another monitor → a floating
+// window: if the mouse is over a workspace column of the open overview
+// (OverviewDropTarget) → MoveWindowToWorkspace(hwnd, that monitor, that
+// workspace), OverviewDropDone(), RequestRetile() and nothing else. Otherwise:
+// if its visible-frame center is now on another monitor → a floating
 // window just joins that monitor's active workspace (not moved), a tiled one
 // goes through MoveWindowToMonitor. Otherwise, for a tiled window in a
 // non-monocle layout: if its visible frame's width or height differs by more
@@ -570,6 +694,44 @@ void UpdateFocusBorder();
 // its center lies inside the visible frame of another tiled window of the same
 // workspace, swap them in the tiled vector. Always RequestRetile().
 void OnUserDragEnd(HWND hwnd);
+
+// ---- Alt+Shift mouse resize ("hold the keys and move the mouse") -----------
+// No click is involved: while left Alt + Shift are held, moving the mouse
+// resizes the ACTIVE window (CommandTarget()), tiled or floating. The edges
+// that move are picked by where the cursor was, relative to that window's
+// center, when the chord started: left of center → its left edge, else its
+// right edge; above center → its top edge, else its bottom edge. Moving the
+// mouse outward grows the window toward that side, inward shrinks it.
+// While the keys are held ONLY the active window changes (live, PlaceWindow);
+// the other tiled windows make room once, when the session ends.
+//
+// Starts a session for CommandTarget(). Qualifies: a managed window on its
+// monitor's active workspace that is not minimized or maximized, and if tiled,
+// in a non-monocle layout with >= 2 layout windows and present in
+// LayoutWindowsOf(ws). Otherwise returns false and nothing is recorded.
+// Records: the window, tiled or floating, its monitor and workspace; for a
+// tiled window its index in LayoutWindowsOf(ws), the count, the layout area,
+// a copy of ws.ratios and the start rect = its slot from ComputeLayout with
+// the start params (NOT the visible frame: apps with a minimum size never
+// match their slot); for a floating window start rect = GetVisibleFrame. Plus
+// the start cursor and the chosen edges. Changes nothing yet. Ends a previous
+// session first.
+bool BeginMouseResize(POINT cursor);
+// newRect = start rect with the chosen edges shifted by the cursor delta,
+// each moved edge kept at least 50 px from its opposite edge; a floating
+// window is also kept inside its monitor's work area. PlaceWindow(hwnd,
+// newRect) only — no ratios, no Retile. No-op without a session or when the
+// delta did not change since the last call; ends the session (without
+// applying) when the window is no longer where it was recorded.
+void UpdateMouseResize(POINT cursor);
+// Ends the session. Tiled window whose rect changed: params = LayoutParamsOf
+// with the RECORDED start ratios, ApplyResize(area, count, params, index,
+// last newRect); if it changed anything ws.ratios = params.ratios; then
+// Retile(mon) either way (neighbours follow, the window snaps to its slot).
+// Floating window: nothing more. Logs once ("mouse-resized window %p") when
+// something changed. No-op without a session.
+void EndMouseResize();
+bool MouseResizeActive();
 
 // Executes a command (see CommandKind). While g.paused only ToggleTiling and
 // Rescan do anything.
@@ -635,14 +797,32 @@ void ShowWorkspaceOsd(int mon);
 // Opening while the timed popup is visible converts it (its timer is killed).
 // No-op for bad `mon`.
 void ShowWorkspaceOverview(int mon);
-// Closes the overview. cancelDrag == false (left Alt released): hides now, or —
-// while a mouse button press or drag on the panel is in progress — right after
-// that press ends (the drop or click still happens). cancelDrag == true: any
+// Hover: while nothing is pressed, the column under the mouse (its whole zone,
+// badge and icons together) gets a light accent tint. Hover is only set by real
+// mouse movement over the panel, so a panel that opens under a resting cursor
+// has no hover; a re-render keeps an existing hover, re-hit-tested at the
+// cursor. A press anywhere in a column that is not on an icon counts as the
+// badge (click → switch).
+// Closes the overview. cancelDrag == false (left Alt released): if a column is
+// hovered and no press is in progress, SwitchWorkspace(mon, hovered column)
+// first (no-op when already active), then hides; while a mouse button press or
+// drag on the panel is in progress it hides right after that press ends
+// instead (the drop or click still happens, no hover switch). cancelDrag == true: any
 // press or drag is abandoned without effect and the panel hides now.
 // The window goes back to click-through. No-op when the overview is not open.
 void CloseWorkspaceOverview(bool cancelDrag);
 // True while the overview is open (including a press that outlives Alt).
 bool WorkspaceOverviewOpen();
+// Dragging something else (a window by its title bar, a Mainstage side tile)
+// onto the open overview. Returns true when the overview is open and screen
+// point `screen` is over one of its workspace columns, with the overview's
+// monitor and that workspace's 0-based index (either pointer may be null).
+// Also moves the column highlight (the hover) to that column, or removes it
+// when there is none, so the drag shows where it would land.
+bool OverviewDropTarget(POINT screen, int* mon, int* wsIndex);
+// The drag ended: removes that highlight, so letting go of Alt right after a
+// drop does not switch workspace.
+void OverviewDropDone();
 // Re-renders the open overview for its monitor so it shows current windows;
 // no-op when it is not open or while a press or drag is in progress. The
 // engine calls it from the coalesced kTimerBar refresh.
@@ -682,6 +862,53 @@ void UpdateTaskbarIndicators();
 void DestroyTaskbarIndicators();  // engine teardown; also shuts down GDI+
 
 // =============================================================================
+// Mainstage side tiles (57_stage.cpp)
+// =============================================================================
+
+inline constexpr wchar_t kStageWindowClass[] = L"HawkTileStage";
+// Mainstage side windows are this much wider than the stage window, to the
+// left, so they are never fully covered (RetileWindows).
+inline constexpr LONG kStageSliver = 2;
+
+// Makes the side tiles on screen match StageSideTiles(): one small borderless
+// window per tile (tool window, never activated, rounded on Windows 11, put
+// at the bottom of the z-order when created so floating windows stay above
+// it), filling the tile's cell and showing a live DWM thumbnail of the real
+// window, scaled to fit the cell and centred, with the invisible resize
+// borders cropped away; the rest of the cell is the theme background. Tiles
+// that are no longer wanted, or whose window is gone, are destroyed. Starts
+// kTimerStage (250 ms), because the real windows reach their size
+// asynchronously.
+//
+// Mouse on a tile:
+//  - Press the left button and move further than twice the system drag
+//    threshold → the tile itself follows the cursor (topmost while dragged),
+//    and OverviewDropTarget(cursor) highlights the overview column under it.
+//    On release it returns to its cell; over an overview column the real
+//    window goes to that workspace (MoveWindowToWorkspace, OverviewDropDone),
+//    otherwise StageDropWindow(real window, cursor) decides.
+//  - A left click without dragging, a double click, a right or middle click
+//    and the mouse wheel are FORWARDED into the real window: the tile point is
+//    mapped through the thumbnail's scale to a screen point of the real
+//    window, the deepest child window there is found with
+//    ChildWindowFromPointEx, and the messages are posted to it (WM_MOUSEMOVE,
+//    then button down and up with client coordinates; WM_MOUSEWHEEL with
+//    screen coordinates). Nothing is posted outside the thumbnail or outside
+//    that window's client area (title bar, borders). The real window is not
+//    activated, so it stays in its tile. Apps that read the real cursor
+//    position or use pointer input instead of mouse messages will not react.
+//  - Left Alt held for 500 ms with the cursor over a tile zooms it: the tile
+//    shows its window at full size around the point under the cursor. The
+//    cursor is then held in place and mouse movement drags the picture under
+//    it. Releasing Alt or dragging the tile (button held) ends the zoom.
+//    Clicks land on the point shown under the cursor.
+void SyncStageProxies();
+// Fits every tile's thumbnail to its window's current size (kTimerStage).
+void RefitStageProxies();
+// Destroys every tile and unregisters the class (engine teardown).
+void DestroyStageProxies();
+
+// =============================================================================
 // Engine (60_engine.cpp)
 // =============================================================================
 
@@ -715,5 +942,23 @@ void StopEngine();
 //     (GetAsyncKeyState; covers a key-up that Raw Input never delivered, e.g.
 //     the secure desktop) → CloseWorkspaceOverview(false).
 // kMenuMaskVk (our own injected key) and the 0xFF filler vk are ignored.
+//
+// Alt+Shift mouse resize (60_engine.cpp, same Raw Input keyboard stream):
+//   - The chord is "on" while left Alt and Shift (either) are down and Ctrl
+//     and Win are up (GetAsyncKeyState for Shift/Ctrl/Win). When it turns on
+//     (on the key-down that completes it, in either order) while
+//     settings.mouseResize && !g.paused && !WorkspaceOverviewOpen(): remember
+//     the cursor (GetCursorPos) as the anchor and start kTimerMouseResize.
+//   - kTimerMouseResize: chord no longer on (re-checked with GetAsyncKeyState:
+//     VK_LMENU and VK_SHIFT down, VK_CONTROL/VK_LWIN/VK_RWIN up) → stop: kill
+//     the timer, EndMouseResize(). Otherwise, without a session: once the
+//     cursor is more than 2 * SM_CXDRAG / SM_CYDRAG from the anchor,
+//     BeginMouseResize(anchor); on success SendMenuMaskKey() (no menu bar and
+//     no input-language switch when the keys are released), else stop
+//     polling for this chord. With a session: UpdateMouseResize(cursor).
+//   - Any other key-down (not Alt, Shift, kMenuMaskVk, 0xFF) while polling →
+//     stop as above (e.g. Alt+Shift+1 ends the resize, keeping the ratios).
+//   - Left Alt or Shift released → stop as above.
+//   - The overview never opens while a mouse-resize poll is running.
 
 }  // namespace ht

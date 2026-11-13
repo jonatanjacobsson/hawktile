@@ -106,6 +106,126 @@ void WalkSplits(const RECT& expanded, int count, const LayoutParams& p,
     slots->push_back(rest);
 }
 
+// Mainstage: the stage's share of the area's width.
+double StageShare(const LayoutParams& p) {
+    if (!p.ratios.empty() && 0.0 < p.ratios[0] && p.ratios[0] < 1.0) {
+        return ClampRatio(p.ratios[0], 0.2, 0.9);
+    }
+    return ClampRatio(p.stageRatio, 0.2, 0.9);
+}
+
+// Mainstage: the stage rect, full height and horizontally centred in `area`.
+RECT StageRect(const RECT& area, const LayoutParams& p) {
+    const LONG areaW = std::max<LONG>(1, area.right - area.left);
+    const LONG width = std::clamp<LONG>(
+        std::lround(static_cast<double>(areaW) * StageShare(p)), 1, areaW);
+    const LONG left = area.left + (areaW - width) / 2;
+    return RECT{left, area.top, left + width, std::max(area.bottom, area.top + 1)};
+}
+
+// Mainstage: the largest rect with aspect ratio aspectW : aspectH inside `box`,
+// centred in it.
+RECT FitAspect(const RECT& box, LONG aspectW, LONG aspectH) {
+    const LONG boxW = std::max<LONG>(1, box.right - box.left);
+    const LONG boxH = std::max<LONG>(1, box.bottom - box.top);
+    LONG w = boxW;
+    LONG h = std::lround(static_cast<double>(w) * aspectH / aspectW);
+    if (h > boxH) {
+        h = boxH;
+        w = std::lround(static_cast<double>(h) * aspectW / aspectH);
+    }
+    w = std::clamp<LONG>(w, 1, boxW);
+    h = std::clamp<LONG>(h, 1, boxH);
+    const LONG left = box.left + (boxW - w) / 2;
+    const LONG top = box.top + (boxH - h) / 2;
+    return RECT{left, top, left + w, top + h};
+}
+
+// Mainstage: the `n` cells of one side strip. The strip is three slots stacked
+// from the top. Up to three windows get a slot each. With more, the first two
+// keep their slots and the rest share the last slot in a grid (2 side by side,
+// then 2x2, 3x2, 3x3, ...). Every cell keeps the stage's aspect ratio
+// (aspectW : aspectH), centred in its slot or grid box.
+std::vector<RECT> SideCells(const RECT& strip, int n, LONG gap, LONG aspectW,
+                            LONG aspectH) {
+    constexpr int kSlots = 3;
+    std::vector<RECT> cells;
+    if (n <= 0) {
+        return cells;
+    }
+    cells.reserve(static_cast<size_t>(n));
+    const LONG stripW = std::max<LONG>(1, strip.right - strip.left);
+    const LONG stripH = std::max<LONG>(1, strip.bottom - strip.top);
+    const LONG slotH = std::max<LONG>(1, (stripH - (kSlots - 1) * gap) / kSlots);
+    const auto slot = [&](int i) {
+        const LONG top = strip.top + i * (slotH + gap);
+        return RECT{strip.left, top, strip.left + stripW, top + slotH};
+    };
+
+    const int single = n <= kSlots ? n : kSlots - 1;
+    for (int i = 0; i < single; ++i) {
+        cells.push_back(FitAspect(slot(i), aspectW, aspectH));
+    }
+    const int rest = n - single;
+    if (rest <= 0) {
+        return cells;
+    }
+    int columns = 1;
+    while (columns * columns < rest) {
+        ++columns;
+    }
+    const int rows = (rest + columns - 1) / columns;
+    const RECT last = slot(kSlots - 1);
+    const LONG boxW = std::max<LONG>(1, (stripW - (columns - 1) * gap) / columns);
+    const LONG boxH = std::max<LONG>(1, (slotH - (rows - 1) * gap) / rows);
+    for (int k = 0; k < rest; ++k) {
+        const LONG left = last.left + (k % columns) * (boxW + gap);
+        const LONG top = last.top + (k / columns) * (boxH + gap);
+        cells.push_back(
+            FitAspect(RECT{left, top, left + boxW, top + boxH}, aspectW, aspectH));
+    }
+    return cells;
+}
+
+// Mainstage: the stage, then the side cells, alternating left and right.
+std::vector<RECT> MainstageLayout(const RECT& area, int count,
+                                  const LayoutParams& p) {
+    std::vector<RECT> out;
+    out.reserve(static_cast<size_t>(count));
+    const RECT stage = StageRect(area, p);
+    out.push_back(stage);
+
+    const LONG gap = std::max(0, p.innerGap);
+    const int sides = count - 1;
+    const LONG stageW = stage.right - stage.left;
+    const LONG stageH = stage.bottom - stage.top;
+    const RECT leftStrip{area.left, area.top,
+                         std::max(area.left + 1, stage.left - gap), area.bottom};
+    const RECT rightStrip{std::min(area.right - 1, stage.right + gap), area.top,
+                          area.right, area.bottom};
+    // Which side each side window is on: p.sides, alternating beyond it.
+    std::vector<bool> onRight(static_cast<size_t>(std::max(0, sides)), false);
+    int rightCount = 0;
+    for (int j = 0; j < sides; ++j) {
+        const size_t k = static_cast<size_t>(j);
+        onRight[k] = k < p.sides.size() ? p.sides[k] != 0 : j % 2 == 1;
+        if (onRight[k]) {
+            ++rightCount;
+        }
+    }
+    const std::vector<RECT> left =
+        SideCells(leftStrip, sides - rightCount, gap, stageW, stageH);
+    const std::vector<RECT> right =
+        SideCells(rightStrip, rightCount, gap, stageW, stageH);
+    size_t nextLeft = 0;
+    size_t nextRight = 0;
+    for (int j = 0; j < sides; ++j) {
+        out.push_back(onRight[static_cast<size_t>(j)] ? right[nextRight++]
+                                                      : left[nextLeft++]);
+    }
+    return out;
+}
+
 // Ranking key of a FindNeighbor candidate; smaller is better.
 struct NeighborKey {
     int overlapRank = 1;  // 0 when the perpendicular extents overlap
@@ -173,6 +293,8 @@ constexpr LayoutNameEntry kLayoutNames[] = {
     {L"columns", LayoutKind::Columns},
     {L"rows", LayoutKind::Rows},
     {L"monocle", LayoutKind::Monocle},
+    {L"mainstage", LayoutKind::Mainstage},
+    {L"stage", LayoutKind::Mainstage},
 };
 
 // Case-insensitive comparison of a whole string against a literal.
@@ -197,6 +319,9 @@ std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams&
         out.assign(static_cast<size_t>(count), area);
         return out;
     }
+    if (p.kind == LayoutKind::Mainstage) {
+        return MainstageLayout(area, count, p);
+    }
 
     const int gap = std::max(0, p.innerGap);
     const LONG a = gap / 2;
@@ -213,6 +338,9 @@ std::vector<RECT> ComputeLayout(const RECT& area, int count, const LayoutParams&
 }
 
 double SplitRatio(const LayoutParams& p, int count, int split) {
+    if (p.kind == LayoutKind::Mainstage && split == 0) {
+        return StageShare(p);
+    }
     if (split < 0 || split >= count - 1) {
         return 0.5;
     }
@@ -238,6 +366,31 @@ double SplitRatio(const LayoutParams& p, int count, int split) {
 
 bool ApplyResize(const RECT& area, int count, LayoutParams& p, int index,
                  const RECT& newRect) {
+    if (p.kind == LayoutKind::Mainstage) {
+        if (count < 1 || index != 0) {
+            return false;
+        }
+        const RECT stage = StageRect(area, p);
+        const LONG stageW = stage.right - stage.left;
+        const LONG change = (newRect.right - newRect.left) - stageW;
+        if (AbsLong(change) <= 2) {
+            return false;
+        }
+        // The stage stays centred, so both edges move: twice the change puts
+        // the dragged edge where the user left it.
+        const LONG areaW = std::max<LONG>(1, area.right - area.left);
+        const double ratio = ClampRatio(
+            static_cast<double>(stageW + 2 * change) / static_cast<double>(areaW),
+            0.2, 0.9);
+        if (p.ratios.empty()) {
+            p.ratios.resize(1, 0.0);
+        }
+        if (p.ratios[0] == ratio) {
+            return false;
+        }
+        p.ratios[0] = ratio;
+        return true;
+    }
     if (p.kind == LayoutKind::Monocle || count < 2 || index < 0 || index >= count) {
         return false;
     }
@@ -389,6 +542,8 @@ const wchar_t* LayoutName(LayoutKind k) {
         return L"rows";
     case LayoutKind::Monocle:
         return L"monocle";
+    case LayoutKind::Mainstage:
+        return L"mainstage";
     case LayoutKind::Count_:
         break;
     }

@@ -11,6 +11,7 @@ constexpr DWORD kMaxProcessPathChars = 1024;
 
 #ifndef HT_STANDALONE
 constexpr wchar_t kHiddenKey[] = L"hiddenWindows";
+constexpr wchar_t kAlwaysFloatKey[] = L"alwaysFloatApps";
 #endif
 
 // Shell and system classes that are never managed. Exact, case-sensitive.
@@ -64,6 +65,22 @@ std::wstring ProcessNameOf(DWORD pid) {
 
 unsigned long long HwndToNumber(HWND hwnd) {
     return static_cast<unsigned long long>(reinterpret_cast<ULONG_PTR>(hwnd));
+}
+
+// g.alwaysFloatApps as one '|'-joined string, sorted so the stored value and the
+// log line are the same every time. Exe names cannot contain '|'.
+std::wstring JoinAlwaysFloatApps() {
+    std::vector<std::wstring> names(g.alwaysFloatApps.begin(),
+                                    g.alwaysFloatApps.end());
+    std::sort(names.begin(), names.end());
+    std::wstring text;
+    for (const std::wstring& name : names) {
+        if (!text.empty()) {
+            text += L'|';
+        }
+        text += name;
+    }
+    return text;
 }
 
 // One SetWindowPos call. Returns false only for ERROR_ACCESS_DENIED.
@@ -209,6 +226,9 @@ Eligibility ClassifyWindow(HWND hwnd, const Settings& settings) {
     if (AnyRuleMatches(settings.ignoreRules, f)) {
         return Eligibility::Ignore;
     }
+    if (!f.processName.empty() && g.alwaysFloatApps.contains(f.processName)) {
+        return Eligibility::Float;
+    }
 
     if (AnyRuleMatches(settings.floatRules, f)) {
         return Eligibility::Float;
@@ -320,6 +340,34 @@ void ShowForWorkspace(HWND hwnd) {
     g.hiddenByUs.erase(hwnd);
     ShowWindowAsync(hwnd, SW_SHOWNA);
     PersistHiddenList();
+    g.needsNudge.insert(hwnd);
+    RequestNudge();
+}
+
+void RequestNudge() {
+    if (g.engineHwnd) {
+        SetTimer(g.engineHwnd, kTimerNudge, 300, nullptr);
+    }
+}
+
+void NudgeWindow(HWND hwnd) {
+    if (!IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd) ||
+        IsZoomed(hwnd)) {
+        return;
+    }
+    RECT r{};
+    GetWindowRect(hwnd, &r);
+    const LONG width = r.right - r.left;
+    const LONG height = r.bottom - r.top;
+    if (width <= 1) {
+        return;
+    }
+    constexpr UINT kFlags = SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE |
+                            SWP_ASYNCWINDOWPOS;
+    // One pixel narrower, then the original size: the app gets two real WM_SIZE
+    // messages and repaints at the final size.
+    SetWindowPos(hwnd, nullptr, r.left, r.top, width - 1, height, kFlags);
+    SetWindowPos(hwnd, nullptr, r.left, r.top, width, height, kFlags);
 }
 
 void PersistHiddenList() {
@@ -378,6 +426,48 @@ void RestoreLeftoverHiddenWindows() {
     }
     HT_LOG(L"RestoreLeftoverHiddenWindows: showed %d window(s)", shown);
     Wh_DeleteValue(kHiddenKey);
+#endif
+}
+
+void LoadAlwaysFloatApps() {
+    g.alwaysFloatApps.clear();
+#ifndef HT_STANDALONE
+    WCHAR buffer[8192] = {};
+    Wh_GetStringValue(kAlwaysFloatKey, buffer, 8192);
+    const std::wstring text(buffer);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t bar = text.find(L'|', pos);
+        if (bar == std::wstring::npos) {
+            bar = text.size();
+        }
+        const std::wstring token = text.substr(pos, bar - pos);
+        pos = bar + 1;
+
+        const size_t begin = token.find_first_not_of(L" \t\r\n");
+        if (begin == std::wstring::npos) {
+            continue;
+        }
+        const size_t end = token.find_last_not_of(L" \t\r\n");
+        std::wstring name = token.substr(begin, end - begin + 1);
+        for (wchar_t& ch : name) {
+            ch = static_cast<wchar_t>(std::towlower(ch));
+        }
+        g.alwaysFloatApps.insert(name);
+    }
+#endif
+    HT_LOG(L"always-float apps: %d (%s)",
+           static_cast<int>(g.alwaysFloatApps.size()),
+           JoinAlwaysFloatApps().c_str());
+}
+
+void SaveAlwaysFloatApps() {
+#ifndef HT_STANDALONE
+    if (g.alwaysFloatApps.empty()) {
+        Wh_DeleteValue(kAlwaysFloatKey);
+        return;
+    }
+    Wh_SetStringValue(kAlwaysFloatKey, JoinAlwaysFloatApps().c_str());
 #endif
 }
 

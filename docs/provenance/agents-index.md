@@ -27,6 +27,13 @@
 | 25 | [read grouped settings paths](agents/25-read-grouped-settings-paths.md) | Haiku 5.5 | 2026-10-09 12:25 UTC |
 | 26 | [overview mode in the OSD](agents/26-overview-mode-in-the-osd.md) | Haiku 5.5 | 2026-10-13 07:58 UTC |
 | 27 | [hold-Alt detection + settings](agents/27-hold-alt-detection-settings.md) | Haiku 5.5 | 2026-10-13 07:58 UTC |
+| 28 | [column hover + release to switch](agents/28-column-hover-release-to-switch.md) | Haiku 5.5 | 2026-10-14 05:41 UTC |
+| 29 | [mouse resize in the model](agents/29-mouse-resize-in-the-model.md) | Haiku 5.5 | 2026-10-14 05:46 UTC |
+| 30 | [Alt+Shift chord + setting](agents/30-alt-shift-chord-setting.md) | Haiku 5.5 | 2026-10-14 05:46 UTC |
+| 31 | [resize nudge for stale apps](agents/31-resize-nudge-for-stale-apps.md) | Haiku 5.5 | 2026-10-14 11:32 UTC |
+| 32 | [Alt+Shift+T never-tile app](agents/32-alt-shift-t-never-tile-app.md) | Haiku 5.5 | 2026-10-26 14:08 UTC |
 
-Records 1–25 come from the first development session (up to 0.8.0), 26–27
-from the second (0.9.0, the hold-Alt workspace overview).
+Records 1–25 come from the first development session (up to 0.8.0), 26–31
+from the second (0.9.0 and 0.10.0: the hold-Alt workspace overview,
+Alt + Shift mouse resizing and the resize nudge), and 32 from the third (0.11.0:
+Alt + Shift + T to never tile an app again).

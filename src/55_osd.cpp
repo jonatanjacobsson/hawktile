@@ -32,10 +32,9 @@ constexpr int kOsdDotDip = 10;           // notification dot diameter
 constexpr int kOsdDotRingDip = 3;        // ring: 2 * 1.5 dip wider than the dot
 constexpr double kOsdDotDiagonal = 0.7071;  // cos and sin of 45 degrees
 constexpr int kOsdDragIconDip = 20;         // app icon while it is dragged
-constexpr int kOsdHighlightCornerDip = 8;   // corner radius: drop target, icon hover
+constexpr int kOsdHighlightCornerDip = 8;   // corner radius: drop target, column hover
 constexpr int kOsdCellCornerDip = 4;        // corner radius: empty slot of a dragged icon
-constexpr int kOsdHoverGrowDip = 3;         // badge hover: the disc grows this far past the badge
-constexpr int kOsdBadgeItem = -1;           // hit test, hover, press: the column's badge
+constexpr int kOsdBadgeItem = -1;           // hit test, press: the column's badge
 constexpr int kOsdNoItem = -2;              // hit test, hover, press: no badge or icon there
 constexpr int kOsdMaxCount = 9;
 constexpr int kOsdDefaultDurationMs = 700;
@@ -101,9 +100,8 @@ struct OsdState {
     bool dragging = false;
     POINT cursor{};    // last mouse position, client pixels
     int dropCol = -1;  // column the dragged icon would land in; -1 = none
-    // Hover: the badge or icon under the mouse while nothing is pressed.
+    // Hover: the column under the mouse while nothing is pressed; -1 = none.
     int hoverCol = -1;
-    int hoverItem = kOsdNoItem;
     bool trackingLeave = false;  // TME_LEAVE is armed
 };
 
@@ -420,6 +418,33 @@ void OsdInvalidate() {
     if (osd.hwnd) InvalidateRect(osd.hwnd, nullptr, FALSE);
 }
 
+// The rounded rectangle over the whole zone of column `col`, shared by the drop
+// target and the hover. Normally a tint `tint` of the way from the background to
+// the active fill; in high contrast (no tint to blend) a `frame`-px outline.
+void OsdPaintColumnZone(HDC dc, size_t col, const RECT& client, const OsdMetrics& m,
+                        double tint, int frame) {
+    int left = 0;
+    int right = 0;
+    OsdZoneBounds(col, client.right, m, left, right);
+    const RECT zone{left + 1, m.pad / 2, right - 1, client.bottom - m.pad / 2};
+    const int corner = OsdScale(kOsdHighlightCornerDip);
+    if (osd.theme.highContrast) {
+        HPEN pen = CreatePen(PS_SOLID, frame, osd.theme.activeFill);
+        HGDIOBJ oldPen = SelectObject(dc, pen);
+        HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+        OsdRoundRect(dc, zone, corner);
+        SelectObject(dc, oldBrush);
+        SelectObject(dc, oldPen);
+        DeleteObject(pen);
+    } else {
+        HBRUSH brush = CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.activeFill, tint));
+        HGDIOBJ oldBrush = SelectObject(dc, brush);
+        OsdRoundRect(dc, zone, corner);
+        SelectObject(dc, oldBrush);
+        DeleteObject(brush);
+    }
+}
+
 // Draws into an off-screen bitmap and copies it once, so the layered window
 // never shows a half-drawn state.
 void OsdPaint(HWND hwnd, HDC target) {
@@ -459,62 +484,14 @@ void OsdPaint(HWND hwnd, HDC target) {
     }
 
     // Drop target: the whole zone of the column the dragged icon would land in.
+    // Drop target: the whole zone of the column the dragged icon would land in.
     if (dragged && osd.dropCol >= 0 && osd.dropCol < ncols) {
-        int left = 0;
-        int right = 0;
-        OsdZoneBounds(static_cast<size_t>(osd.dropCol), client.right, m, left, right);
-        const RECT drop{left + 1, m.pad / 2, right - 1, h - m.pad / 2};
-        const int corner = OsdScale(kOsdHighlightCornerDip);
-        if (osd.theme.highContrast) {
-            // No tint in high contrast: a 2-px frame instead.
-            HPEN frame = CreatePen(PS_SOLID, 2, osd.theme.activeFill);
-            HGDIOBJ oldFramePen = SelectObject(mem, frame);
-            HGDIOBJ oldBrush = SelectObject(mem, GetStockObject(NULL_BRUSH));
-            OsdRoundRect(mem, drop, corner);
-            SelectObject(mem, oldBrush);
-            SelectObject(mem, oldFramePen);
-            DeleteObject(frame);
-        } else {
-            HBRUSH tint =
-                CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.activeFill, 0.30));
-            HGDIOBJ oldBrush = SelectObject(mem, tint);
-            OsdRoundRect(mem, drop, corner);
-            SelectObject(mem, oldBrush);
-            DeleteObject(tint);
-        }
+        OsdPaintColumnZone(mem, static_cast<size_t>(osd.dropCol), client, m, 0.30, 2);
     }
 
-    // Hover: a highlight behind the badge or icon under the mouse. Never while pressed.
+    // Hover: the whole zone of the column under the mouse. Never while pressed.
     if (osd.interactive && !OsdPressed() && osd.hoverCol >= 0 && osd.hoverCol < ncols) {
-        const OsdColumn& col = osd.columns[static_cast<size_t>(osd.hoverCol)];
-        // High contrast has no tint to blend (occupiedFill == background): an
-        // outline in the highlight color instead.
-        HBRUSH hover =
-            osd.theme.highContrast
-                ? nullptr
-                : CreateSolidBrush(OsdBlend(osd.theme.background, osd.theme.occupiedFill, 0.5));
-        HPEN hoverPen =
-            osd.theme.highContrast ? CreatePen(PS_SOLID, 1, osd.theme.activeFill) : nullptr;
-        HGDIOBJ oldBrush =
-            SelectObject(mem, hover ? static_cast<HGDIOBJ>(hover) : GetStockObject(NULL_BRUSH));
-        HGDIOBJ oldHoverPen = hoverPen ? SelectObject(mem, hoverPen) : nullptr;
-        if (osd.hoverItem == kOsdBadgeItem) {
-            // The badge circle grown a little: a disc behind it.
-            const int grow = OsdScale(kOsdHoverGrowDip);
-            const int badgeLeft = col.left + (col.width - m.badge) / 2;
-            const RECT disc{badgeLeft - grow, m.pad - grow, badgeLeft + m.badge + grow,
-                            m.pad + m.badge + grow};
-            OsdRoundRect(mem, disc, (disc.bottom - disc.top) / 2);
-        } else if (osd.hoverItem >= 0 && osd.hoverItem < static_cast<int>(col.icons.size())) {
-            // The icon's row band, as wide as the column.
-            const RECT band{col.left, m.bandTop(osd.hoverItem), col.left + col.width,
-                            m.bandBottom(osd.hoverItem)};
-            OsdRoundRect(mem, band, OsdScale(kOsdHighlightCornerDip));
-        }
-        if (oldHoverPen) SelectObject(mem, oldHoverPen);
-        SelectObject(mem, oldBrush);
-        if (hoverPen) DeleteObject(hoverPen);
-        if (hover) DeleteObject(hover);
+        OsdPaintColumnZone(mem, static_cast<size_t>(osd.hoverCol), client, m, 0.15, 1);
     }
 
     for (size_t i = 0; i < osd.columns.size(); ++i) {
@@ -640,8 +617,11 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 GetCursorPos(&pt);
                 ScreenToClient(hwnd, &pt);
                 const OsdHit hit = OsdHitTest(pt);
-                const bool onTarget = hit.col >= 0 && hit.item != kOsdNoItem;
-                SetCursor(LoadCursorW(nullptr, onTarget ? IDC_HAND : IDC_ARROW));
+                // The whole panel is a target; a drag keeps its move cursor.
+                const bool moving = osd.dragging;
+                SetCursor(LoadCursorW(nullptr, moving ? IDC_SIZEALL
+                                              : hit.col >= 0 ? IDC_HAND
+                                                             : IDC_ARROW));
                 return TRUE;
             }
             break;
@@ -649,13 +629,19 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (!osd.interactive) return 0;
             const POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             const OsdHit hit = OsdHitTest(pt);
-            if (hit.col < 0 || hit.item == kOsdNoItem) return 0;
+            if (hit.col < 0) return 0;
             osd.pressCol = hit.col;
-            osd.pressItem = hit.item;
+            // Anywhere in the column but on an icon counts as the badge.
+            osd.pressItem = hit.item == kOsdNoItem ? kOsdBadgeItem : hit.item;
             osd.pressPt = pt;
             osd.cursor = pt;
             osd.dragging = false;
             osd.dropCol = -1;
+            // The press is the action now, so the hover goes.
+            if (osd.hoverCol >= 0) {
+                osd.hoverCol = -1;
+                OsdInvalidate();
+            }
             SetCapture(hwnd);
             return 0;
         }
@@ -689,13 +675,10 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 tme.hwndTrack = hwnd;
                 osd.trackingLeave = TrackMouseEvent(&tme) != FALSE;
             }
-            const OsdHit hit = OsdHitTest(pt);
-            const bool onTarget = hit.col >= 0 && hit.item != kOsdNoItem;
-            const int hoverCol = onTarget ? hit.col : -1;
-            const int hoverItem = onTarget ? hit.item : kOsdNoItem;
-            if (hoverCol != osd.hoverCol || hoverItem != osd.hoverItem) {
+            // The column under the mouse, -1 outside the panel.
+            const int hoverCol = OsdHitTest(pt).col;
+            if (hoverCol != osd.hoverCol) {
                 osd.hoverCol = hoverCol;
-                osd.hoverItem = hoverItem;
                 OsdInvalidate();
             }
             return 0;
@@ -704,7 +687,6 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             osd.trackingLeave = false;
             if (osd.hoverCol >= 0) {
                 osd.hoverCol = -1;
-                osd.hoverItem = kOsdNoItem;
                 OsdInvalidate();
             }
             return 0;
@@ -743,7 +725,9 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     HT_LOG(L"overview: moved %d window(s) from workspace %d to %d",
                            moved, pressCol + 1, dropCol + 1);
                 }
-            } else if (hit.col == pressCol && hit.item == pressItem) {
+            } else if (hit.col == pressCol &&
+                       (hit.item == kOsdNoItem ? kOsdBadgeItem : hit.item) == pressItem) {
+                // Same mapping as the press: anywhere in the column but on an icon is the badge.
                 if (pressItem == kOsdBadgeItem) {
                     SwitchWorkspace(mon, pressCol);
                 } else {
@@ -772,7 +756,6 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     CloseWorkspaceOverview(true);
                 } else {
                     osd.hoverCol = -1;
-                    osd.hoverItem = kOsdNoItem;
                     OsdInvalidate();
                 }
             }
@@ -869,9 +852,8 @@ void OsdSetInteractive(bool on) {
 bool OsdRender(int mon) {
     if (mon < 0 || mon >= static_cast<int>(g.monitors.size())) return false;
     if (!OsdEnsureWindow()) return false;
+    // A hover survives the re-render; it is re-hit-tested below, once the layout is known.
     osd.mon = mon;
-    osd.hoverCol = -1;
-    osd.hoverItem = kOsdNoItem;
 
     const Monitor& m = g.monitors[mon];
     const int avail = static_cast<int>(m.workspaces.size());
@@ -937,6 +919,14 @@ bool OsdRender(int mon) {
     const int y0 = static_cast<int>(m.rcWork.top) + (areaH - height) / 2;
     SetWindowPos(osd.hwnd, HWND_TOPMOST, x0, y0, width, height,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // Hover follows the cursor, not the old layout: only real mouse movement sets it,
+    // so a panel that opens under a resting cursor has none.
+    if (osd.hoverCol >= 0) {
+        POINT pt{};
+        GetCursorPos(&pt);
+        ScreenToClient(osd.hwnd, &pt);
+        osd.hoverCol = OsdHitTest(pt).col;
+    }
     InvalidateRect(osd.hwnd, nullptr, FALSE);
     UpdateWindow(osd.hwnd);
     return true;
@@ -1080,9 +1070,18 @@ void CloseWorkspaceOverview(bool cancelDrag) {
         return;
     }
 
+    // Released over a column (no press here, so the hover is current): switch to
+    // it once the panel is hidden.
+    // Over the active workspace there is nothing to do (and SwitchWorkspace would
+    // flash the timed popup).
+    const bool switchTo = !cancelDrag && osd.hoverCol >= 0 && osd.mon >= 0 &&
+                          osd.mon < static_cast<int>(g.monitors.size()) &&
+                          osd.hoverCol != g.monitors[osd.mon].active;
+    const int target = osd.hoverCol;
+    const int mon = osd.mon;
+
     OsdAbandonPress();
     osd.hoverCol = -1;
-    osd.hoverItem = kOsdNoItem;
     osd.trackingLeave = false;
     osd.interactive = false;
     osd.closeAfterPress = false;
@@ -1091,10 +1090,36 @@ void CloseWorkspaceOverview(bool cancelDrag) {
         KillTimer(osd.hwnd, kOsdHideTimer);
         ShowWindow(osd.hwnd, SW_HIDE);
     }
+    if (switchTo) {
+        HT_LOG(L"overview: released over workspace %d", target + 1);
+        SwitchWorkspace(mon, target);
+    }
 }
 
 bool WorkspaceOverviewOpen() {
     return osd.interactive && osd.hwnd != nullptr && IsWindowVisible(osd.hwnd) != FALSE;
+}
+
+bool OverviewDropTarget(POINT screen, int* mon, int* wsIndex) {
+    if (!WorkspaceOverviewOpen()) return false;
+    POINT pt = screen;
+    ScreenToClient(osd.hwnd, &pt);
+    const int col = OsdHitTest(pt).col;
+    if (col != osd.hoverCol) {
+        osd.hoverCol = col;
+        OsdInvalidate();
+    }
+    if (col < 0) return false;
+    if (mon) *mon = osd.mon;
+    if (wsIndex) *wsIndex = col;
+    return true;
+}
+
+void OverviewDropDone() {
+    if (osd.hoverCol >= 0) {
+        osd.hoverCol = -1;
+        OsdInvalidate();
+    }
 }
 
 void RefreshWorkspaceOverview() {
